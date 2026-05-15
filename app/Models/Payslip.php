@@ -39,10 +39,10 @@ class Payslip extends Model
     public function stateLabel(): string
     {
         return match ($this->state) {
-            'draft'  => 'مسودة',
-            'verify' => 'بانتظار التحقق',
-            'done'   => 'مُعتمدة',
-            'cancel' => 'ملغاة',
+            'draft'  => __('Payslip state: draft'),
+            'verify' => __('Payslip state: verify'),
+            'done'   => __('Payslip state: done'),
+            'cancel' => __('Payslip state: cancel'),
             default  => $this->state,
         };
     }

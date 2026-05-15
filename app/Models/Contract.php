@@ -24,11 +24,11 @@ class Contract extends Model
     public function stateLabel(): string
     {
         return match ($this->state) {
-            'draft'  => 'مسودة',
-            'open'   => 'سارٍ',
-            'pending'=> 'بانتظار التجديد',
-            'close'  => 'منتهٍ',
-            'cancel' => 'ملغى',
+            'draft'  => __('Contract state: draft'),
+            'open'   => __('Contract state: open'),
+            'pending'=> __('Contract state: pending'),
+            'close'  => __('Contract state: close'),
+            'cancel' => __('Contract state: cancel'),
             default  => $this->state,
         };
     }

@@ -46,9 +46,9 @@ class DashboardController extends Controller
                 default       => $sync->syncAll(),
             };
         } catch (\Throwable $e) {
-            return back()->withErrors(['sync' => 'فشلت المزامنة: ' . $e->getMessage()]);
+            return back()->withErrors(['sync' => __('Sync failed: :error', ['error' => $e->getMessage()])]);
         }
 
-        return back()->with('status', "✅ تمت المزامنة ({$model})");
+        return back()->with('status', __('✅ Sync completed (:model)', ['model' => $model]));
     }
 }

@@ -12,19 +12,19 @@
 
 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
     <div>
-        <label class="block text-sm font-medium mb-1">الاسم *</label>
+        <label class="block text-sm font-medium mb-1">{{ __('Name') }} *</label>
         <input type="text" name="name" required value="{{ $val('name') }}"
                class="w-full border rounded px-3 py-2">
     </div>
     <div>
-        <label class="block text-sm font-medium mb-1">المسمى الوظيفي</label>
+        <label class="block text-sm font-medium mb-1">{{ __('Job title') }}</label>
         <input type="text" name="job_title" value="{{ $val('job_title') }}"
                class="w-full border rounded px-3 py-2">
     </div>
     <div>
-        <label class="block text-sm font-medium mb-1">القسم</label>
+        <label class="block text-sm font-medium mb-1">{{ __('Department') }}</label>
         <select name="department_id" class="w-full border rounded px-3 py-2 bg-white">
-            <option value="">— اختر —</option>
+            <option value="">{{ __('— Select —') }}</option>
             @foreach ($departments as $d)
                 <option value="{{ $d->odoo_id }}" {{ (int) $val('department_id') === $d->odoo_id ? 'selected' : '' }}>
                     {{ $d->name }}
@@ -33,9 +33,9 @@
         </select>
     </div>
     <div>
-        <label class="block text-sm font-medium mb-1">المدير المباشر</label>
+        <label class="block text-sm font-medium mb-1">{{ __('Direct manager') }}</label>
         <select name="parent_id" class="w-full border rounded px-3 py-2 bg-white">
-            <option value="">— اختر —</option>
+            <option value="">{{ __('— Select —') }}</option>
             @foreach ($managers as $m)
                 <option value="{{ $m->odoo_id }}" {{ (int) $val('parent_id') === $m->odoo_id ? 'selected' : '' }}>
                     {{ $m->name }}
@@ -44,17 +44,17 @@
         </select>
     </div>
     <div>
-        <label class="block text-sm font-medium mb-1">البريد</label>
+        <label class="block text-sm font-medium mb-1">{{ __('Email') }}</label>
         <input type="email" name="work_email" value="{{ $val('work_email') }}"
                class="w-full border rounded px-3 py-2">
     </div>
     <div>
-        <label class="block text-sm font-medium mb-1">هاتف العمل</label>
+        <label class="block text-sm font-medium mb-1">{{ __('Work phone') }}</label>
         <input type="text" name="work_phone" value="{{ $val('work_phone') }}"
                class="w-full border rounded px-3 py-2">
     </div>
     <div>
-        <label class="block text-sm font-medium mb-1">جوال</label>
+        <label class="block text-sm font-medium mb-1">{{ __('Mobile') }}</label>
         <input type="text" name="mobile_phone" value="{{ $val('mobile_phone') }}"
                class="w-full border rounded px-3 py-2">
     </div>

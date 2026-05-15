@@ -70,7 +70,7 @@ class LeaveController extends Controller
         }
 
         return redirect()->route('leaves.index')
-            ->with('status', "تم إنشاء طلب الإجازة");
+            ->with('status', __('Leave request created'));
     }
 
     public function approve(int $id)
@@ -89,7 +89,7 @@ class LeaveController extends Controller
         }
 
         return redirect()->route('leaves.index')
-            ->with('status', "تمت الموافقة على الإجازة");
+            ->with('status', __('Leave approved'));
     }
 
     public function refuse(int $id)
@@ -103,7 +103,7 @@ class LeaveController extends Controller
             return back()->withErrors(['odoo' => $e->getMessage()]);
         }
 
-        return redirect()->route('leaves.index')->with('status', "تم رفض الإجازة");
+        return redirect()->route('leaves.index')->with('status', __('Leave refused'));
     }
 
     public function destroy(int $id)
@@ -117,6 +117,6 @@ class LeaveController extends Controller
             return back()->withErrors(['odoo' => $e->getMessage()]);
         }
 
-        return redirect()->route('leaves.index')->with('status', "تم حذف الطلب");
+        return redirect()->route('leaves.index')->with('status', __('Leave request deleted'));
     }
 }

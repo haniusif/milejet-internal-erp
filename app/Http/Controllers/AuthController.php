@@ -81,7 +81,7 @@ class AuthController extends Controller
         $request->session()->regenerate();
 
         return redirect()->intended(route('dashboard'))
-            ->with('status', "مرحباً {$user->name}!");
+            ->with('status', __('Welcome, :name!', ['name' => $user->name]));
     }
 
     public function logout(Request $request)

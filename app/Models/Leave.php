@@ -24,11 +24,11 @@ class Leave extends Model
     public function stateLabel(): string
     {
         return match ($this->state) {
-            'draft'    => 'مسودة',
-            'confirm'  => 'قيد الموافقة',
-            'validate' => 'موافق عليها',
-            'refuse'   => 'مرفوضة',
-            'cancel'   => 'ملغاة',
+            'draft'    => __('Leave state: draft'),
+            'confirm'  => __('Leave state: confirm'),
+            'validate' => __('Leave state: validate'),
+            'refuse'   => __('Leave state: refuse'),
+            'cancel'   => __('Leave state: cancel'),
             default    => $this->state,
         };
     }

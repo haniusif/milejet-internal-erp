@@ -71,7 +71,7 @@ class EmployeeController extends Controller
         }
 
         return redirect()->route('employees.index')
-            ->with('status', "تم إنشاء الموظف (ID: {$odooId})");
+            ->with('status', __('Employee created (ID: :id)', ['id' => $odooId]));
     }
 
     public function show(int $id)
@@ -165,7 +165,7 @@ class EmployeeController extends Controller
         }
 
         return redirect()->route('employees.index')
-            ->with('status', "تم تحديث بيانات الموظف");
+            ->with('status', __('Employee details updated'));
     }
 
     public function destroy(int $id)
@@ -180,6 +180,6 @@ class EmployeeController extends Controller
         }
 
         return redirect()->route('employees.index')
-            ->with('status', "تم حذف الموظف");
+            ->with('status', __('Employee deleted'));
     }
 }

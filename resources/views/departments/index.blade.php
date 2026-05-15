@@ -1,12 +1,12 @@
 @extends('layouts.app')
-@section('title', 'الأقسام')
+@section('title', __('Departments'))
 
 @section('content')
 <div class="flex flex-wrap items-end justify-between gap-3 mb-5">
     <div>
-        <p class="text-xs uppercase tracking-wider text-slate-400">الهيكل التنظيمي</p>
+        <p class="text-xs uppercase tracking-wider text-slate-400">{{ __('Organizational structure') }}</p>
         <h1 class="text-2xl font-bold tracking-tight text-slate-900 mt-1">
-            الأقسام <span class="text-slate-400 font-medium">({{ $departments->count() }})</span>
+            {{ __('Departments') }} <span class="text-slate-400 font-medium">({{ $departments->count() }})</span>
         </h1>
     </div>
     @can('departments.write')
@@ -15,7 +15,7 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" class="ico-sm">
             <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
         </svg>
-        قسم جديد
+        {{ __('New department') }}
     </a>
     @endcan
 </div>
@@ -24,12 +24,12 @@
     <table class="w-full text-sm">
         <thead class="bg-slate-50 text-[11px] uppercase tracking-wider text-slate-500">
             <tr>
-                <th class="px-4 py-3 text-right font-medium">#</th>
-                <th class="px-4 py-3 text-right font-medium">الاسم</th>
-                <th class="px-4 py-3 text-right font-medium">القسم الرئيسي</th>
-                <th class="px-4 py-3 text-right font-medium">المدير</th>
-                <th class="px-4 py-3 text-right font-medium">الموظفون</th>
-                <th class="px-4 py-3 text-left font-medium">إجراءات</th>
+                <th class="px-4 py-3 text-start font-medium">#</th>
+                <th class="px-4 py-3 text-start font-medium">{{ __('Name') }}</th>
+                <th class="px-4 py-3 text-start font-medium">{{ __('Parent department') }}</th>
+                <th class="px-4 py-3 text-start font-medium">{{ __('Manager') }}</th>
+                <th class="px-4 py-3 text-start font-medium">{{ __('Employees') }}</th>
+                <th class="px-4 py-3 text-end font-medium">{{ __('Actions') }}</th>
             </tr>
         </thead>
         <tbody class="divide-y divide-slate-100">
@@ -44,25 +44,25 @@
                             {{ $d->total_employee }}
                         </span>
                     </td>
-                    <td class="px-4 py-3 text-left whitespace-nowrap">
+                    <td class="px-4 py-3 text-end whitespace-nowrap">
                         @can('departments.write')
                             <a href="{{ route('departments.edit', $d->id) }}"
-                               class="inline-flex items-center text-xs text-brand-600 hover:text-brand-700 hover:underline">تعديل</a>
+                               class="inline-flex items-center text-xs text-brand-600 hover:text-brand-700 hover:underline">{{ __('Edit') }}</a>
                         @endcan
                         @can('departments.delete')
                             <form action="{{ route('departments.destroy', $d->id) }}" method="POST" class="inline ms-2"
-                                  onsubmit="return confirm('حذف القسم؟')">
+                                  onsubmit="return confirm('{{ __('Delete department?') }}')">
                                 @csrf @method('DELETE')
-                                <button class="text-xs text-rose-600 hover:text-rose-700 hover:underline">حذف</button>
+                                <button class="text-xs text-rose-600 hover:text-rose-700 hover:underline">{{ __('Delete') }}</button>
                             </form>
                         @endcan
                         @cannot('departments.write')
-                            <span class="text-xs text-slate-400">عرض فقط</span>
+                            <span class="text-xs text-slate-400">{{ __('View only') }}</span>
                         @endcannot
                     </td>
                 </tr>
             @empty
-                <tr><td colspan="6" class="px-4 py-10 text-center text-slate-400">لا توجد أقسام.</td></tr>
+                <tr><td colspan="6" class="px-4 py-10 text-center text-slate-400">{{ __('No departments found.') }}</td></tr>
             @endforelse
         </tbody>
     </table>

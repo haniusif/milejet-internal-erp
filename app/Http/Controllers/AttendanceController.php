@@ -73,7 +73,7 @@ class AttendanceController extends Controller
             return back()->withErrors(['odoo' => $e->getMessage()]);
         }
 
-        return back()->with('status', "تم تسجيل الحضور");
+        return back()->with('status', __('Attendance check-in recorded'));
     }
 
     /**
@@ -104,7 +104,7 @@ class AttendanceController extends Controller
             return back()->withErrors(['odoo' => $e->getMessage()]);
         }
 
-        return back()->with('status', "تم تسجيل الانصراف");
+        return back()->with('status', __('Check-out recorded'));
     }
 
     public function destroy(int $id)
@@ -118,6 +118,6 @@ class AttendanceController extends Controller
             return back()->withErrors(['odoo' => $e->getMessage()]);
         }
 
-        return back()->with('status', "تم حذف السجل");
+        return back()->with('status', __('Record deleted'));
     }
 }

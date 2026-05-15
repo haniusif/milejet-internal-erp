@@ -82,7 +82,7 @@ class PayslipController extends Controller
 
         if (!$contract) {
             return back()->withInput()
-                ->withErrors(['employee_id' => 'لا يوجد عقد نشط لهذا الموظف']);
+                ->withErrors(['employee_id' => __('No active contract for this employee')]);
         }
 
         try {
@@ -111,7 +111,7 @@ class PayslipController extends Controller
         $local = Payslip::where('odoo_id', $odooId)->first();
 
         return redirect()->route('payslips.show', $local->id)
-            ->with('status', 'تم إنشاء قسيمة الراتب');
+            ->with('status', __('Payslip created'));
     }
 
     public function compute(int $id)
@@ -124,7 +124,7 @@ class PayslipController extends Controller
             return back()->withErrors(['odoo' => $e->getMessage()]);
         }
 
-        return back()->with('status', 'تم إعادة الحساب');
+        return back()->with('status', __('Recomputed successfully'));
     }
 
     public function destroy(int $id)
@@ -141,6 +141,6 @@ class PayslipController extends Controller
             return back()->withErrors(['odoo' => $e->getMessage()]);
         }
 
-        return redirect()->route('payslips.index')->with('status', 'تم الحذف');
+        return redirect()->route('payslips.index')->with('status', __('Deleted'));
     }
 }

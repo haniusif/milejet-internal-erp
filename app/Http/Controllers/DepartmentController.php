@@ -47,7 +47,7 @@ class DepartmentController extends Controller
         }
 
         return redirect()->route('departments.index')
-            ->with('status', "تم إنشاء القسم");
+            ->with('status', __('Department created'));
     }
 
     public function edit(int $id)
@@ -82,7 +82,7 @@ class DepartmentController extends Controller
             return back()->withInput()->withErrors(['odoo' => $e->getMessage()]);
         }
 
-        return redirect()->route('departments.index')->with('status', "تم تحديث القسم");
+        return redirect()->route('departments.index')->with('status', __('Department updated'));
     }
 
     public function destroy(int $id)
@@ -96,6 +96,6 @@ class DepartmentController extends Controller
             return back()->withErrors(['odoo' => $e->getMessage()]);
         }
 
-        return redirect()->route('departments.index')->with('status', "تم حذف القسم");
+        return redirect()->route('departments.index')->with('status', __('Department deleted'));
     }
 }
