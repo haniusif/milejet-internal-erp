@@ -8,11 +8,17 @@ use App\Http\Controllers\DepartmentController;
 use App\Http\Controllers\EmployeeController;
 use App\Http\Controllers\LeaveController;
 use App\Http\Controllers\PayslipController;
+use App\Http\Controllers\PreferencesController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/login',   [AuthController::class, 'showLogin'])->name('login');
 Route::post('/login',  [AuthController::class, 'login']);
 Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
+
+Route::get('/locale/{locale}', [PreferencesController::class, 'setLocale'])
+    ->whereIn('locale', ['ar', 'en'])->name('preferences.locale');
+Route::get('/theme/{theme}', [PreferencesController::class, 'setTheme'])
+    ->whereIn('theme', ['light', 'dark'])->name('preferences.theme');
 
 Route::middleware('auth')->group(function () {
 

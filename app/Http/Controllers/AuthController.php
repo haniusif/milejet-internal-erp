@@ -35,7 +35,7 @@ class AuthController extends Controller
 
         if (!$uid) {
             return back()->withErrors([
-                'email' => 'البريد أو كلمة المرور غير صحيحة في Odoo.',
+                'email' => __('Invalid email or password in Odoo.'),
             ])->withInput($request->except('password'));
         }
 
