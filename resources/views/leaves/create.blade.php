@@ -1,0 +1,55 @@
+@extends('layouts.app')
+@section('title', 'طلب إجازة جديد')
+
+@section('content')
+    <h1 class="text-2xl font-bold mb-4">طلب إجازة جديد</h1>
+
+    <form method="POST" action="{{ route('leaves.store') }}" class="bg-white rounded shadow p-6 space-y-4 max-w-2xl">
+        @csrf
+
+        <div>
+            <label class="block text-sm font-medium mb-1">الموظف *</label>
+            <select name="employee_id" required class="w-full border rounded px-3 py-2 bg-white">
+                <option value="">— اختر —</option>
+                @foreach ($employees as $e)
+                    <option value="{{ $e->odoo_id }}" {{ (int) old('employee_id') === $e->odoo_id ? 'selected' : '' }}>
+                        {{ $e->name }}
+                    </option>
+                @endforeach
+            </select>
+        </div>
+
+        <div>
+            <label class="block text-sm font-medium mb-1">نوع الإجازة *</label>
+            <select name="holiday_status_id" required class="w-full border rounded px-3 py-2 bg-white">
+                <option value="">— اختر —</option>
+                @foreach ($leaveTypes as $t)
+                    <option value="{{ $t->odoo_id }}" {{ (int) old('holiday_status_id') === $t->odoo_id ? 'selected' : '' }}>
+                        {{ $t->name }}
+                    </option>
+                @endforeach
+            </select>
+        </div>
+
+        <div class="grid grid-cols-2 gap-4">
+            <div>
+                <label class="block text-sm font-medium mb-1">من *</label>
+                <input type="date" name="date_from" required value="{{ old('date_from') }}" class="w-full border rounded px-3 py-2">
+            </div>
+            <div>
+                <label class="block text-sm font-medium mb-1">إلى *</label>
+                <input type="date" name="date_to" required value="{{ old('date_to') }}" class="w-full border rounded px-3 py-2">
+            </div>
+        </div>
+
+        <div>
+            <label class="block text-sm font-medium mb-1">السبب</label>
+            <textarea name="name" rows="3" class="w-full border rounded px-3 py-2">{{ old('name') }}</textarea>
+        </div>
+
+        <div class="flex gap-2 pt-4 border-t">
+            <button class="bg-yellow-600 hover:bg-yellow-700 text-white px-6 py-2 rounded">إرسال</button>
+            <a href="{{ route('leaves.index') }}" class="px-6 py-2 rounded border">إلغاء</a>
+        </div>
+    </form>
+@endsection
