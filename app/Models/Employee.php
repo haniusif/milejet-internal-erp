@@ -11,8 +11,12 @@ class Employee extends Model
     protected $guarded = ['id'];
 
     protected $casts = [
-        'active'     => 'boolean',
-        'synced_at'  => 'datetime',
+        'active'             => 'boolean',
+        'synced_at'          => 'datetime',
+        'master_imported_at' => 'datetime',
+        'date_of_joining'    => 'date',
+        'contract_end_date'  => 'date',
+        'birthday'           => 'date',
     ];
 
     public function department(): BelongsTo

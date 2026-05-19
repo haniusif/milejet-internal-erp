@@ -47,19 +47,28 @@
     <table class="w-full text-sm">
         <thead class="bg-slate-50 text-[11px] uppercase tracking-wider text-slate-500">
             <tr>
-                <th class="px-4 py-3 text-start font-medium">#</th>
+                <th class="px-4 py-3 text-start font-medium">{{ __('Code') }}</th>
                 <th class="px-4 py-3 text-start font-medium">{{ __('Name') }}</th>
                 <th class="px-4 py-3 text-start font-medium">{{ __('Job title') }}</th>
-                <th class="px-4 py-3 text-start font-medium">{{ __('Department') }}</th>
                 <th class="px-4 py-3 text-start font-medium">{{ __('Manager') }}</th>
-                <th class="px-4 py-3 text-start font-medium">{{ __('Email') }}</th>
+                <th class="px-4 py-3 text-start font-medium">{{ __('Nationality') }}</th>
+                <th class="px-4 py-3 text-end font-medium">{{ __('Salary') }}</th>
+                <th class="px-4 py-3 text-center font-medium">{{ __('Status') }}</th>
                 <th class="px-4 py-3 text-end font-medium">{{ __('Actions') }}</th>
             </tr>
         </thead>
         <tbody class="divide-y divide-slate-100">
             @forelse ($employees as $e)
+                @php
+                    $csColor = match (mb_strtolower((string) $e->contract_status)) {
+                        'active'        => 'bg-emerald-50 text-emerald-700 ring-emerald-200',
+                        'expiring soon' => 'bg-amber-50 text-amber-700 ring-amber-200',
+                        'expired'       => 'bg-rose-50 text-rose-700 ring-rose-200',
+                        default         => 'bg-slate-100 text-slate-600 ring-slate-200',
+                    };
+                @endphp
                 <tr class="hover:bg-slate-50/60 transition">
-                    <td class="px-4 py-3 text-xs text-slate-400 tabular-nums">{{ $e->odoo_id }}</td>
+                    <td class="px-4 py-3 text-xs text-slate-500 tabular-nums font-mono">{{ $e->emp_code ?: '—' }}</td>
                     <td class="px-4 py-3">
                         <a href="{{ route('employees.show', $e->id) }}" class="flex items-center gap-3 group">
                             @if ($e->image_small && strlen($e->image_small) > 1500)
@@ -75,9 +84,22 @@
                         </a>
                     </td>
                     <td class="px-4 py-3 text-slate-600">{{ $e->job_title ?: '—' }}</td>
-                    <td class="px-4 py-3 text-slate-600">{{ $e->department_name ?: '—' }}</td>
                     <td class="px-4 py-3 text-slate-600">{{ $e->parent_name ?: '—' }}</td>
-                    <td class="px-4 py-3 text-xs text-slate-500">{{ $e->work_email ?: '—' }}</td>
+                    <td class="px-4 py-3 text-slate-600 text-xs">{{ $e->nationality ?: '—' }}</td>
+                    <td class="px-4 py-3 text-end tabular-nums text-slate-700">
+                        @if ($e->total_salary)
+                            {{ number_format($e->total_salary, 0) }} <span class="text-[10px] text-slate-400">{{ __('SAR') }}</span>
+                        @else
+                            —
+                        @endif
+                    </td>
+                    <td class="px-4 py-3 text-center">
+                        @if ($e->contract_status)
+                            <span class="inline-flex items-center text-[10px] font-medium px-2 py-0.5 rounded-full ring-1 {{ $csColor }}">{{ __($e->contract_status) }}</span>
+                        @else
+                            <span class="text-slate-400">—</span>
+                        @endif
+                    </td>
                     <td class="px-4 py-3 text-end whitespace-nowrap">
                         <a href="{{ route('employees.show', $e->id) }}"
                            class="inline-flex items-center text-xs text-slate-600 hover:text-slate-900 hover:underline">{{ __('View') }}</a>
@@ -95,7 +117,7 @@
                     </td>
                 </tr>
             @empty
-                <tr><td colspan="7" class="px-4 py-10 text-center text-slate-400">{{ __('No employees found.') }}</td></tr>
+                <tr><td colspan="8" class="px-4 py-10 text-center text-slate-400">{{ __('No employees found.') }}</td></tr>
             @endforelse
         </tbody>
     </table>

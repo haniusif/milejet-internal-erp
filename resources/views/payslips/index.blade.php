@@ -43,7 +43,14 @@
             <option value="{{ $emp->odoo_id }}" @selected(request('employee_id') == $emp->odoo_id)>{{ $emp->name }}</option>
         @endforeach
     </select>
-    <input type="month" name="month" value="{{ request('month') }}" class="h-9 px-3 border border-slate-200 rounded-md text-sm">
+    <select name="period" id="period-select" class="h-9 px-3 border border-slate-200 rounded-md text-sm bg-white">
+        <option value="">{{ __('All months') }}</option>
+        <option value="current" @selected(request('period')=='current')>{{ __('Current month') }}</option>
+        <option value="last"    @selected(request('period')=='last')>{{ __('Last month') }}</option>
+    </select>
+    <input type="month" name="month" id="month-input" value="{{ request('month') }}"
+           @if (request('period')) disabled @endif
+           class="h-9 px-3 border border-slate-200 rounded-md text-sm disabled:bg-slate-100 disabled:text-slate-400">
     <select name="state" class="h-9 px-3 border border-slate-200 rounded-md text-sm bg-white">
         <option value="">{{ __('All statuses') }}</option>
         <option value="draft"  @selected(request('state')=='draft')>{{ __('Payslip state: draft') }}</option>
@@ -52,7 +59,28 @@
         <option value="cancel" @selected(request('state')=='cancel')>{{ __('Payslip state: cancel') }}</option>
     </select>
     <button class="h-9 px-4 bg-slate-900 text-white text-sm font-medium rounded-md hover:bg-slate-800">{{ __('Filter') }}</button>
+    @if (request('period') || request('employee_id') || request('month') || request('state'))
+        <a href="{{ route('payslips.index') }}" class="text-xs text-slate-500 hover:text-slate-700">{{ __('Reset') }}</a>
+    @endif
 </form>
+<script>
+(function () {
+    const periodSel = document.getElementById('period-select');
+    const monthInp  = document.getElementById('month-input');
+    if (!periodSel || !monthInp) return;
+    periodSel.addEventListener('change', () => {
+        if (periodSel.value) {
+            monthInp.value = '';
+            monthInp.disabled = true;
+        } else {
+            monthInp.disabled = false;
+        }
+    });
+    monthInp.addEventListener('input', () => {
+        if (monthInp.value) periodSel.value = '';
+    });
+})();
+</script>
 
 <div class="bg-white border border-slate-200 rounded-xl overflow-hidden">
     <table class="w-full text-sm">

@@ -6,13 +6,14 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Facades\Crypt;
+use Laravel\Sanctum\HasApiTokens;
 
 class User extends Authenticatable
 {
-    use HasFactory, Notifiable;
+    use HasFactory, Notifiable, HasApiTokens;
 
     protected $fillable = [
-        'name', 'email', 'odoo_uid', 'odoo_api_key', 'password',
+        'name', 'email', 'odoo_uid', 'odoo_employee_id', 'odoo_api_key', 'password',
         'odoo_group_ids', 'roles', 'roles_synced_at',
     ];
 
