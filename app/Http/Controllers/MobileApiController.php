@@ -252,6 +252,19 @@ class MobileApiController extends Controller
 
     // ─── Attendance ───────────────────────────────────────────
 
+    public function attendanceConfig(Request $request): JsonResponse
+    {
+        $lat = config('attendance.office_lat');
+        $lng = config('attendance.office_lng');
+
+        return response()->json([
+            'latitude'  => $lat !== null ? (float) $lat : null,
+            'longitude' => $lng !== null ? (float) $lng : null,
+            'radius'    => (int) config('attendance.geofence_radius'),
+            'enforce'   => (bool) config('attendance.geofence_enforce'),
+        ]);
+    }
+
     public function attendance(Request $request): JsonResponse
     {
         $user = $request->user();
@@ -293,6 +306,17 @@ class MobileApiController extends Controller
             return response()->json(['message' => 'No linked employee'], 422);
         }
 
+        $loc = $request->validate([
+            'latitude'  => 'nullable|numeric|between:-90,90',
+            'longitude' => 'nullable|numeric|between:-180,180',
+        ]);
+        $lat = $loc['latitude']  ?? null;
+        $lng = $loc['longitude'] ?? null;
+
+        if ($error = $this->geofenceError($lat, $lng)) {
+            return response()->json(['message' => $error], 422);
+        }
+
         // If already checked in locally, return the existing record (idempotent)
         $existing = Attendance::where('odoo_employee_id', $user->odoo_employee_id)
             ->whereNull('check_out')
@@ -304,10 +328,15 @@ class MobileApiController extends Controller
 
         try {
             $this->odoo->setCredentials($user->email, $user->odoo_api_key, $user->odoo_uid);
-            $odooId = $this->odoo->create('hr.attendance', [
+            $payload = [
                 'employee_id' => $user->odoo_employee_id,
                 'check_in'    => now()->utc()->format('Y-m-d H:i:s'),
-            ]);
+            ];
+            if ($lat !== null && $lng !== null) {
+                $payload['in_latitude']  = (float) $lat;
+                $payload['in_longitude'] = (float) $lng;
+            }
+            $odooId = $this->odoo->create('hr.attendance', $payload);
 
             $rows = $this->odoo->read('hr.attendance', [$odooId],
                 ['id', 'employee_id', 'check_in', 'check_out', 'worked_hours']);
@@ -323,6 +352,8 @@ class MobileApiController extends Controller
                         'check_in'         => $r['check_in'],
                         'check_out'        => $r['check_out'] ?: null,
                         'worked_hours'     => $r['worked_hours'] ?? 0,
+                        'in_latitude'      => $lat,
+                        'in_longitude'     => $lng,
                         'synced_at'        => now(),
                     ]
                 );
@@ -343,20 +374,38 @@ class MobileApiController extends Controller
         $att = Attendance::findOrFail($id);
         $user = $request->user();
 
+        $loc = $request->validate([
+            'latitude'  => 'nullable|numeric|between:-90,90',
+            'longitude' => 'nullable|numeric|between:-180,180',
+        ]);
+        $lat = $loc['latitude']  ?? null;
+        $lng = $loc['longitude'] ?? null;
+
+        if ($error = $this->geofenceError($lat, $lng)) {
+            return response()->json(['message' => $error], 422);
+        }
+
         try {
             $this->odoo->setCredentials($user->email, $user->odoo_api_key, $user->odoo_uid);
-            $this->odoo->write('hr.attendance', [$att->odoo_id], [
+            $writePayload = [
                 'check_out' => now()->utc()->format('Y-m-d H:i:s'),
-            ]);
+            ];
+            if ($lat !== null && $lng !== null) {
+                $writePayload['out_latitude']  = (float) $lat;
+                $writePayload['out_longitude'] = (float) $lng;
+            }
+            $this->odoo->write('hr.attendance', [$att->odoo_id], $writePayload);
 
             $rows = $this->odoo->read('hr.attendance', [$att->odoo_id],
                 ['check_out', 'worked_hours']);
 
             if (!empty($rows[0])) {
                 $att->update([
-                    'check_out'    => $rows[0]['check_out'],
-                    'worked_hours' => $rows[0]['worked_hours'] ?? 0,
-                    'synced_at'    => now(),
+                    'check_out'     => $rows[0]['check_out'],
+                    'worked_hours'  => $rows[0]['worked_hours'] ?? 0,
+                    'out_latitude'  => $lat,
+                    'out_longitude' => $lng,
+                    'synced_at'     => now(),
                 ]);
             }
 
@@ -423,6 +472,53 @@ class MobileApiController extends Controller
         return $raw;
     }
 
+    /**
+     * Returns a friendly error message if the given coordinates violate the
+     * geofence policy, or null if the punch is allowed.
+     */
+    private function geofenceError($lat, $lng): ?string
+    {
+        if (!config('attendance.geofence_enforce')) {
+            return null;
+        }
+
+        $officeLat = config('attendance.office_lat');
+        $officeLng = config('attendance.office_lng');
+
+        // Geofence not configured → nothing to enforce.
+        if ($officeLat === null || $officeLng === null) {
+            return null;
+        }
+
+        if ($lat === null || $lng === null) {
+            return 'Location is required to check in. Please enable location and try again.';
+        }
+
+        $radius   = (int) config('attendance.geofence_radius');
+        $distance = $this->distanceMeters((float) $lat, (float) $lng, (float) $officeLat, (float) $officeLng);
+
+        if ($distance > $radius) {
+            return sprintf(
+                'You are %d m away from the office. You must be within %d m to check in/out.',
+                (int) round($distance),
+                $radius
+            );
+        }
+
+        return null;
+    }
+
+    /** Great-circle distance between two points in meters (Haversine). */
+    private function distanceMeters(float $lat1, float $lng1, float $lat2, float $lng2): float
+    {
+        $earth = 6371000.0; // meters
+        $dLat  = deg2rad($lat2 - $lat1);
+        $dLng  = deg2rad($lng2 - $lng1);
+        $a = sin($dLat / 2) ** 2
+            + cos(deg2rad($lat1)) * cos(deg2rad($lat2)) * sin($dLng / 2) ** 2;
+        return $earth * 2 * atan2(sqrt($a), sqrt(1 - $a));
+    }
+
     private function formatAttendance(Attendance $a): array
     {
         return [
@@ -431,6 +527,10 @@ class MobileApiController extends Controller
             'check_in'      => $a->check_in?->toIso8601String(),
             'check_out'     => $a->check_out?->toIso8601String(),
             'worked_hours'  => (float) $a->worked_hours,
+            'in_latitude'   => $a->in_latitude !== null ? (float) $a->in_latitude : null,
+            'in_longitude'  => $a->in_longitude !== null ? (float) $a->in_longitude : null,
+            'out_latitude'  => $a->out_latitude !== null ? (float) $a->out_latitude : null,
+            'out_longitude' => $a->out_longitude !== null ? (float) $a->out_longitude : null,
         ];
     }
 
