@@ -32,7 +32,60 @@ class LeaveController extends Controller
         $leaves = $query->orderByDesc('odoo_id')->paginate(20)->withQueryString();
         $employees = Employee::where('active', true)->orderBy('name')->get();
 
-        return view('leaves.index', compact('leaves', 'employees'));
+        // [hr.leave odoo id => [{id, name, mimetype}, ...]] for the current page.
+        $attachments = $this->attachmentsFor(
+            $leaves->getCollection()->pluck('odoo_id')->filter()->values()->all()
+        );
+
+        return view('leaves.index', compact('leaves', 'employees', 'attachments'));
+    }
+
+    /** Batch-load ir.attachment metadata for the given hr.leave odoo ids. */
+    private function attachmentsFor(array $leaveOdooIds): array
+    {
+        if (empty($leaveOdooIds)) {
+            return [];
+        }
+        try {
+            $rows = $this->odoo->useServiceAccount()->searchRead(
+                'ir.attachment',
+                [['res_model', '=', 'hr.leave'], ['res_id', 'in', $leaveOdooIds]],
+                ['id', 'name', 'mimetype', 'res_id']
+            );
+        } catch (\Throwable $e) {
+            report($e);
+            return [];
+        }
+
+        $map = [];
+        foreach ($rows as $r) {
+            $resId = is_array($r['res_id'] ?? null) ? ($r['res_id'][0] ?? null) : ($r['res_id'] ?? null);
+            if ($resId === null) {
+                continue;
+            }
+            $map[$resId][] = $r;
+        }
+        return $map;
+    }
+
+    /** Streams a leave attachment's file inline (for the dashboard). */
+    public function attachment(int $id)
+    {
+        try {
+            $rows = $this->odoo->useServiceAccount()->read('ir.attachment', [$id],
+                ['name', 'mimetype', 'res_model', 'datas']);
+        } catch (\Throwable $e) {
+            abort(404);
+        }
+        if (empty($rows[0]) || ($rows[0]['res_model'] ?? null) !== 'hr.leave' || empty($rows[0]['datas'])) {
+            abort(404);
+        }
+        $att = $rows[0];
+
+        return response(base64_decode($att['datas']), 200, [
+            'Content-Type'        => $att['mimetype'] ?: 'application/octet-stream',
+            'Content-Disposition' => 'inline; filename="' . ($att['name'] ?: 'attachment') . '"',
+        ]);
     }
 
     public function create()

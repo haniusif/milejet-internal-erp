@@ -39,6 +39,7 @@
                     <th class="px-3 py-2 text-start">{{ __('To') }}</th>
                     <th class="px-3 py-2 text-start">{{ __('Days') }}</th>
                     <th class="px-3 py-2 text-start">{{ __('Status') }}</th>
+                    <th class="px-3 py-2 text-start">{{ __('Attachments') }}</th>
                     <th class="px-3 py-2 text-end">{{ __('Actions') }}</th>
                 </tr>
             </thead>
@@ -55,6 +56,23 @@
                             <span class="px-2 py-0.5 rounded text-xs {{ $l->stateColor() }}">
                                 {{ $l->stateLabel() }}
                             </span>
+                        </td>
+                        <td class="px-3 py-2">
+                            @php $atts = $attachments[$l->odoo_id] ?? []; @endphp
+                            @forelse ($atts as $att)
+                                <a href="{{ route('leaves.attachment', $att['id']) }}" target="_blank"
+                                   title="{{ $att['name'] }}"
+                                   class="inline-flex items-center gap-1 text-indigo-600 hover:underline max-w-[160px] truncate align-middle">
+                                    <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round"
+                                              d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"/>
+                                    </svg>
+                                    <span class="truncate">{{ $att['name'] }}</span>
+                                </a>
+                                @if (!$loop->last)<br>@endif
+                            @empty
+                                <span class="text-gray-400">—</span>
+                            @endforelse
                         </td>
                         <td class="px-3 py-2 text-end whitespace-nowrap">
                             @if (in_array($l->state, ['draft', 'confirm']))
@@ -75,7 +93,7 @@
                         </td>
                     </tr>
                 @empty
-                    <tr><td colspan="8" class="px-3 py-6 text-center text-gray-500">{{ __('No requests found.') }}</td></tr>
+                    <tr><td colspan="9" class="px-3 py-6 text-center text-gray-500">{{ __('No requests found.') }}</td></tr>
                 @endforelse
             </tbody>
         </table>

@@ -54,6 +54,7 @@ Route::middleware('auth')->group(function () {
     Route::prefix('leaves')->name('leaves.')->controller(LeaveController::class)->group(function () {
         Route::get('/',       'index')->name('index');
         Route::get('/create', 'create')->name('create');
+        Route::get('/attachments/{id}', 'attachment')->whereNumber('id')->name('attachment');
         Route::post('/',      'store')->name('store');  // any employee can request
         Route::middleware('can:leaves.approve')->group(function () {
             Route::post('/{id}/approve', 'approve')->whereNumber('id')->name('approve');
