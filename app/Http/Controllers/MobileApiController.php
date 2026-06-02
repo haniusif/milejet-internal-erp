@@ -181,10 +181,14 @@ class MobileApiController extends Controller
         }
 
         $data = $request->validate([
-            'leave_type_id' => 'required|integer',
-            'date_from'     => 'required|date',
-            'date_to'       => 'required|date|after_or_equal:date_from',
-            'reason'        => 'nullable|string|max:500',
+            'leave_type_id'    => 'required|integer',
+            'date_from'        => 'required|date',
+            'date_to'          => 'required|date|after_or_equal:date_from',
+            'reason'           => 'nullable|string|max:500',
+            'attachment'       => 'nullable|array',
+            'attachment.name'  => 'required_with:attachment|string|max:255',
+            // base64 of a ~5 MB file ≈ 7M chars; cap to bound the request.
+            'attachment.data'  => 'required_with:attachment|string|max:8000000',
         ]);
 
         // Resolve Odoo leave type ID from local ID
@@ -232,6 +236,25 @@ class MobileApiController extends Controller
                         'synced_at'        => now(),
                     ]
                 );
+            }
+
+            // Attach the uploaded file to the leave record in Odoo. Best-effort:
+            // a failure here must not void an otherwise-valid leave request.
+            // Created via the service account (employees can't always create
+            // ir.attachment) and linked to the leave via res_model/res_id.
+            if (!empty($data['attachment']['data'])) {
+                try {
+                    $this->odoo->useServiceAccount();
+                    $this->odoo->create('ir.attachment', [
+                        'name'      => $data['attachment']['name'] ?? 'leave-attachment',
+                        'datas'     => $data['attachment']['data'], // base64
+                        'res_model' => 'hr.leave',
+                        'res_id'    => $odooId,
+                        'type'      => 'binary',
+                    ]);
+                } catch (\Throwable $e) {
+                    logger()->warning('Leave attachment upload failed: ' . $e->getMessage());
+                }
             }
 
             $days = (int) now()->parse($data['date_from'])->diffInDays($data['date_to']) + 1;
@@ -327,7 +350,10 @@ class MobileApiController extends Controller
         }
 
         try {
-            $this->odoo->setCredentials($user->email, $user->odoo_api_key, $user->odoo_uid);
+            // Employees lack hr.attendance create rights in Odoo, so punch via
+            // the service account. employee_id is set from the authenticated
+            // user server-side, so a user can only ever check in as themselves.
+            $this->odoo->useServiceAccount();
             $payload = [
                 'employee_id' => $user->odoo_employee_id,
                 'check_in'    => now()->utc()->format('Y-m-d H:i:s'),
@@ -386,7 +412,8 @@ class MobileApiController extends Controller
         }
 
         try {
-            $this->odoo->setCredentials($user->email, $user->odoo_api_key, $user->odoo_uid);
+            // Use the service account — employees can't write hr.attendance.
+            $this->odoo->useServiceAccount();
             $writePayload = [
                 'check_out' => now()->utc()->format('Y-m-d H:i:s'),
             ];

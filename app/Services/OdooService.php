@@ -45,6 +45,20 @@ class OdooService
     }
 
     /**
+     * الرجوع إلى حساب الخدمة (المسؤول) المُعرَّف في الإعدادات.
+     * يُستخدم للعمليات التي تتطلب صلاحيات أعلى من صلاحيات الموظف العادي،
+     * مثل إنشاء/تعديل سجلات الحضور (hr.attendance) — الموظفون العاديون
+     * لا يملكون صلاحية إنشائها في Odoo.
+     */
+    public function useServiceAccount(): self
+    {
+        $this->username = config('odoo.username');
+        $this->password = config('odoo.api_key');
+        $this->uid = null; // إعادة المصادقة كحساب الخدمة
+        return $this;
+    }
+
+    /**
      * تسجيل دخول والحصول على uid - يرجّع false لو فشل (بدون رمي exception)
      */
     public function tryAuthenticate(string $username, string $password): int|false
