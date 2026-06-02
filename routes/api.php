@@ -14,6 +14,7 @@ Route::middleware('auth:sanctum')->prefix('mobile')->group(function () {
     Route::get('/leaves',         [MobileApiController::class, 'leaves']);
     Route::get('/leave-types',    [MobileApiController::class, 'leaveTypes']);
     Route::post('/leaves',        [MobileApiController::class, 'createLeave']);
+    Route::get('/leaves/attachments/{id}', [MobileApiController::class, 'leaveAttachment'])->whereNumber('id');
 
     Route::get('/attendance',         [MobileApiController::class, 'attendance']);
     Route::get('/attendance/config',  [MobileApiController::class, 'attendanceConfig']);

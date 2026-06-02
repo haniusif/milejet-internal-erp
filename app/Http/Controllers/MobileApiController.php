@@ -149,8 +149,15 @@ class MobileApiController extends Controller
             $query->where('state', $state);
         }
 
+        $leaves = $query->limit(50)->get();
+
+        // Batch-fetch attachment metadata for all these leaves in one Odoo call.
+        $attachments = $this->leaveAttachmentsMap(
+            $leaves->pluck('odoo_id')->filter()->values()->all()
+        );
+
         return response()->json(
-            $query->limit(50)->get()->map(fn($l) => [
+            $leaves->map(fn($l) => [
                 'id'              => $l->id,
                 'employee_name'   => $l->employee_name,
                 'leave_type_name' => $l->leave_type_name,
@@ -159,8 +166,85 @@ class MobileApiController extends Controller
                 'number_of_days'  => (float) $l->number_of_days,
                 'state'           => $l->state,
                 'name'            => $l->description,
+                'attachments'     => $attachments[$l->odoo_id] ?? [],
             ])
         );
+    }
+
+    /**
+     * Maps [hr.leave odoo id => [['id','name','mimetype'], ...]] for the given
+     * leave ids, read from Odoo ir.attachment via the service account. Empty
+     * (and logs) on failure so the leaves list still renders.
+     */
+    private function leaveAttachmentsMap(array $leaveOdooIds): array
+    {
+        if (empty($leaveOdooIds)) {
+            return [];
+        }
+        try {
+            $rows = $this->odoo->useServiceAccount()->searchRead(
+                'ir.attachment',
+                [['res_model', '=', 'hr.leave'], ['res_id', 'in', $leaveOdooIds]],
+                ['id', 'name', 'mimetype', 'res_id']
+            );
+        } catch (\Throwable $e) {
+            logger()->warning('Fetch leave attachments failed: ' . $e->getMessage());
+            return [];
+        }
+
+        $map = [];
+        foreach ($rows as $r) {
+            $resId = is_array($r['res_id'] ?? null) ? ($r['res_id'][0] ?? null) : ($r['res_id'] ?? null);
+            if ($resId === null) {
+                continue;
+            }
+            $map[$resId][] = [
+                'id'       => $r['id'],
+                'name'     => $r['name'] ?? 'attachment',
+                'mimetype' => $r['mimetype'] ?: null,
+            ];
+        }
+        return $map;
+    }
+
+    /**
+     * Returns a single leave attachment's bytes (base64) — only if it belongs
+     * to one of the authenticated employee's leaves.
+     */
+    public function leaveAttachment(Request $request, int $id): JsonResponse
+    {
+        $user = $request->user();
+        if (!$user->odoo_employee_id) {
+            return response()->json(['message' => 'No linked employee'], 422);
+        }
+
+        try {
+            $rows = $this->odoo->useServiceAccount()->read('ir.attachment', [$id],
+                ['name', 'mimetype', 'res_model', 'res_id', 'datas']);
+        } catch (\Throwable $e) {
+            return response()->json(['message' => 'Attachment not found'], 404);
+        }
+        if (empty($rows[0])) {
+            return response()->json(['message' => 'Attachment not found'], 404);
+        }
+        $att   = $rows[0];
+        $resId = is_array($att['res_id'] ?? null) ? ($att['res_id'][0] ?? null) : ($att['res_id'] ?? null);
+
+        $owns = ($att['res_model'] ?? null) === 'hr.leave'
+            && $resId !== null
+            && Leave::where('odoo_id', $resId)
+                ->where('odoo_employee_id', $user->odoo_employee_id)
+                ->exists();
+        if (!$owns) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+
+        return response()->json([
+            'id'       => $id,
+            'name'     => $att['name'] ?? 'attachment',
+            'mimetype' => $att['mimetype'] ?: 'application/octet-stream',
+            'data'     => $att['datas'] ?? '',
+        ]);
     }
 
     public function leaveTypes(): JsonResponse
