@@ -40,6 +40,31 @@ class LeaveController extends Controller
         return view('leaves.index', compact('leaves', 'employees', 'attachments'));
     }
 
+    /**
+     * Turns a raw Odoo fault message into a friendly, translatable one for the
+     * dashboard. Falls back to the original (minus the technical prefix).
+     */
+    private function friendlyOdooError(string $raw): string
+    {
+        $lower = strtolower($raw);
+
+        if (str_contains($lower, 'not supposed to work') || str_contains($raw, 'غير مفترض')) {
+            return __('This time off falls on non-working days in the employee\'s schedule, so it can\'t be approved. Check the dates or the work calendar (Saudi work week is Sun–Thu).');
+        }
+        if (str_contains($lower, 'allocation') || str_contains($raw, 'تخصيص')) {
+            return __('No leave balance available for this type. Please allocate days for the employee first.');
+        }
+        if (str_contains($lower, 'overlap') || str_contains($raw, 'تداخل')) {
+            return __('These dates overlap an existing leave request.');
+        }
+        if (str_contains($lower, 'duration') && str_contains($lower, '0')) {
+            return __('This leave has zero working days for the selected period.');
+        }
+
+        // Strip the "خطأ في model.method: " prefix added by OdooService.
+        return trim(preg_replace('/^خطأ في [\w.]+:\s*/u', '', $raw));
+    }
+
     /** Batch-load ir.attachment metadata for the given hr.leave odoo ids. */
     private function attachmentsFor(array $leaveOdooIds): array
     {
@@ -119,7 +144,7 @@ class LeaveController extends Controller
             $odooId = $this->odoo->create('hr.leave', $payload);
             $this->sync->refreshLeave($odooId);
         } catch (RuntimeException $e) {
-            return back()->withInput()->withErrors(['odoo' => $e->getMessage()]);
+            return back()->withInput()->withErrors(['odoo' => $this->friendlyOdooError($e->getMessage())]);
         }
 
         return redirect()->route('leaves.index')
@@ -138,7 +163,7 @@ class LeaveController extends Controller
             $this->odoo->executeKw('hr.leave', 'action_approve', [[$leave->odoo_id]]);
             $this->sync->refreshLeave($leave->odoo_id);
         } catch (RuntimeException $e) {
-            return back()->withErrors(['odoo' => $e->getMessage()]);
+            return back()->withErrors(['odoo' => $this->friendlyOdooError($e->getMessage())]);
         }
 
         return redirect()->route('leaves.index')
@@ -153,7 +178,7 @@ class LeaveController extends Controller
             $this->odoo->executeKw('hr.leave', 'action_refuse', [[$leave->odoo_id]]);
             $this->sync->refreshLeave($leave->odoo_id);
         } catch (RuntimeException $e) {
-            return back()->withErrors(['odoo' => $e->getMessage()]);
+            return back()->withErrors(['odoo' => $this->friendlyOdooError($e->getMessage())]);
         }
 
         return redirect()->route('leaves.index')->with('status', __('Leave refused'));
@@ -167,7 +192,7 @@ class LeaveController extends Controller
             $this->odoo->unlink('hr.leave', [$leave->odoo_id]);
             $leave->delete();
         } catch (RuntimeException $e) {
-            return back()->withErrors(['odoo' => $e->getMessage()]);
+            return back()->withErrors(['odoo' => $this->friendlyOdooError($e->getMessage())]);
         }
 
         return redirect()->route('leaves.index')->with('status', __('Leave request deleted'));
