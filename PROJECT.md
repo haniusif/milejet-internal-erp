@@ -5,7 +5,8 @@
 **Local URL:** http://127.0.0.1:8001 (run with PHP 8.4: `/opt/homebrew/opt/php@8.4/bin/php artisan serve`)
 **Database:** MySQL `milejet_controll` (local cache; Odoo is source of truth)
 **Mobile backend:** Sanctum-authenticated API under `/api/mobile/` (consumed by the Flutter `hr-mobile` app)
-**Snapshot date:** 2026-06-01
+**Repo:** `github.com/haniusif/milejet-internal-erp` (mobile app lives separately at `github.com/haniusif/milejet-mobile`)
+**Snapshot date:** 2026-06-03
 
 ---
 
@@ -228,9 +229,10 @@ sessions           — Laravel session storage
 | PUT | `/employees/{id}` | Update in Odoo + sync |
 | DELETE | `/employees/{id}` | Unlink in Odoo + delete locally |
 | GET | `/departments` | Same CRUD pattern |
-| GET | `/leaves` | List + filter |
+| GET | `/leaves` | List + filter (shows an **Attachments** column with download links) |
+| GET | `/leaves/attachments/{id}` | Stream a leave attachment file inline |
 | POST | `/leaves` | Create leave request |
-| POST | `/leaves/{id}/approve` | `action_confirm` + `action_approve` |
+| POST | `/leaves/{id}/approve` | `action_confirm` + `action_approve` (Odoo faults shown as friendly messages) |
 | POST | `/leaves/{id}/refuse` | `action_refuse` |
 | GET | `/attendances` | List + filter |
 | POST | `/attendances/check-in` | Create `hr.attendance` |
@@ -251,7 +253,7 @@ app/Http/Controllers/
 ├── DashboardController.php  — stats + sync trigger
 ├── EmployeeController.php   — CRUD on hr.employee
 ├── DepartmentController.php — CRUD on hr.department
-├── LeaveController.php      — create/approve/refuse leaves
+├── LeaveController.php      — create/approve/refuse leaves; list + stream leave attachments; friendly Odoo errors
 ├── AttendanceController.php — check-in / check-out
 ├── ContractController.php   — read-only list
 └── PayslipController.php    — full payslip workflow
@@ -261,7 +263,7 @@ app/Http/Controllers/
 
 ```
 app/Services/
-├── OdooService.php  — XML-RPC client wrapper (singleton, per-user credentials)
+├── OdooService.php  — XML-RPC client wrapper (per-user credentials; `useServiceAccount()` reverts to the admin/service account for privileged ops like hr.attendance / ir.attachment)
 └── SyncService.php  — pull each model from Odoo + write into local DB
 ```
 
@@ -291,9 +293,11 @@ app/Models/
   `res.users` via XML-RPC, links the employee by `hr.employee.user_id = uid`, then returns a Sanctum
   bearer token (30-day expiry). The local `users` row is auto-created on first login (`updateOrCreate`
   on `odoo_uid`).
-- **Endpoints:** `me`, `leaves`, `leave-types`, `leaves` (POST), `attendance`, `attendance/config`,
-  `attendance/current`, `attendance/check-in`, `attendance/{id}/check-out`, `payslips`, `payslips/{id}`,
-  `notifications` (stub), `logout`.
+- **Endpoints:** `me`, `leaves`, `leave-types`, `leaves` (POST), `leaves/attachments/{id}`,
+  `attendance`, `attendance/config`, `attendance/current`, `attendance/check-in`,
+  `attendance/{id}/check-out`, `payslips`, `payslips/{id}`, `notifications` (stub), `logout`.
+- **Error shape:** 4xx responses return `{message, errors?}` (Laravel validation `errors` map on 422);
+  the app surfaces them inline. Odoo business errors are mapped to friendly EN/AR messages.
 
 ### Geofenced attendance
 
@@ -305,6 +309,23 @@ Check-in/out are restricted to within a configurable radius of the office.
 - `checkIn`/`checkOut` accept `latitude`/`longitude`, validate distance with a Haversine helper, reject
   out-of-radius (or missing-when-enforced) punches with **HTTP 422**, write Odoo GPS fields
   (`in_/out_latitude/longitude`) + the local geo columns, and return the coordinates.
+- **Service-account punch (2026-06-02):** regular employees lack `hr.attendance` create/write rights in
+  Odoo, so `checkIn`/`checkOut` call `OdooService::useServiceAccount()` before writing. `employee_id`
+  is set server-side from the authenticated user — a user can only ever punch as themselves.
+- `currentAttendance` returns `null` for no open attendance; the app also treats an empty `{}`/id-less
+  body as "not checked in" (avoids a phantom checked-in card).
+
+### Leave attachments (2026-06-03)
+
+- **Create:** `POST /mobile/leaves` accepts an optional `attachment: {name, data}` where `data` is
+  base64 (capped ~5 MB). After the `hr.leave` is created, an Odoo `ir.attachment`
+  (`res_model=hr.leave`, `res_id`, `type=binary`) is created via the service account — best-effort
+  (a failed upload never voids the leave).
+- **List:** `GET /mobile/leaves` includes an `attachments: [{id, name, mimetype}]` array per leave,
+  batch-fetched from Odoo in one call.
+- **Download:** `GET /mobile/leaves/attachments/{id}` returns `{name, mimetype, data(base64)}`, but only
+  if the attachment belongs to one of the authenticated employee's own leaves.
+- The web dashboard surfaces the same attachments (Attachments column + inline file streaming).
 
 ### Employee user provisioning
 
@@ -321,8 +342,8 @@ cases skipped (one with no emp_code, one with a stale `odoo_id`).
 
 ### Start the server
 ```bash
-cd /Users/haniyousif/dev/milejet-space/hr/hr-system
-php artisan serve --host=127.0.0.1 --port=8001
+cd /Users/haniyousif/dev/milejet-space/milejet-new-hr/hr-system
+/opt/homebrew/opt/php@8.4/bin/php artisan serve --host=127.0.0.1 --port=8001
 ```
 
 ### Sync data manually
@@ -393,6 +414,7 @@ Dependencies:
 | GOSI base | `GOSI_EE` deducts 10% of full gross. Per Saudi law it should be 10% of (basic + housing) capped at 45,000 SAR. Easy fix — patch the formula. |
 | Employer cost in Laravel | Local payslip totals roll up BASIC/ALW/GROSS/DED/NET — but COMP (Employer Cost) is not surfaced in the UI. Migration + view change needed if you want it. |
 | Employee login | **Resolved (2026-06-01).** `php artisan odoo:provision-users --apply` created internal `res.users` for 45 employees and linked `hr.employee.user_id`; 47 now log in to the mobile app. Shared password `12345678` should be rotated. 2 employees still need manual fixes (missing emp_code / stale odoo_id). |
+| Work-week calendar | Employees use Odoo's default **Standard 40h (Mon–Fri)** calendar, but the Saudi work week is **Sun–Thu**. A leave on Sun/Sat computes **0 working days** and Odoo refuses approval ("not supposed to work during that period"). The dashboard now shows a friendly message for this; the real fix is switching the working calendar to Sun–Thu (affects attendance/payroll). |
 | Sync limits | `syncLeaves` pulls last 500. `syncAttendances` pulls last 1000. `syncPayslips` pulls last 500. Adjust in `SyncService.php` if you outgrow these. |
 | Soft deletes | If a record is deleted in Odoo, the local sync doesn't remove it. (We saw this with the original Hani Yousif duplicate — cleanup is manual.) |
 | OCA payroll docs gap | OCA payroll uses `condition_python` / `amount_python_compute` differently from Odoo Enterprise payroll. Examples in this codebase work; some online tutorials targeting Enterprise won't. |
