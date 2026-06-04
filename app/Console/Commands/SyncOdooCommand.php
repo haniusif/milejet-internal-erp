@@ -7,7 +7,7 @@ use Illuminate\Console\Command;
 
 class SyncOdooCommand extends Command
 {
-    protected $signature = 'odoo:sync {model? : أي موديل (departments|employees|leaves|attendances|leave_types|contracts|payslips|all)}';
+    protected $signature = 'odoo:sync {model? : أي موديل (work_locations|departments|employees|leaves|attendances|leave_types|contracts|payslips|all)}';
     protected $description = 'مزامنة البيانات من Odoo إلى قاعدة بيانات Laravel المحلية';
 
     public function handle(SyncService $sync): int
@@ -18,6 +18,7 @@ class SyncOdooCommand extends Command
         $this->newLine();
 
         $methods = match ($model) {
+            'work_locations' => ['syncWorkLocations'],
             'departments' => ['syncDepartments'],
             'employees'   => ['syncEmployees'],
             'leave_types' => ['syncLeaveTypes'],
@@ -25,7 +26,7 @@ class SyncOdooCommand extends Command
             'attendances' => ['syncAttendances'],
             'contracts'   => ['syncContracts'],
             'payslips'    => ['syncPayslips'],
-            'all'         => ['syncDepartments', 'syncEmployees', 'syncLeaveTypes', 'syncLeaves', 'syncAttendances', 'syncContracts', 'syncPayslips'],
+            'all'         => ['syncWorkLocations', 'syncDepartments', 'syncEmployees', 'syncLeaveTypes', 'syncLeaves', 'syncAttendances', 'syncContracts', 'syncPayslips'],
             default       => null,
         };
 

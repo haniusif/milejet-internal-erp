@@ -2,8 +2,9 @@
     $val = function ($f, $def = '') use ($employee) {
         if (!$employee) return old($f, $def);
         $map = [
-            'department_id' => 'odoo_department_id',
-            'parent_id'     => 'odoo_parent_id',
+            'department_id'    => 'odoo_department_id',
+            'parent_id'        => 'odoo_parent_id',
+            'work_location_id' => 'odoo_work_location_id',
         ];
         $key = $map[$f] ?? $f;
         return old($f, $employee->$key ?? $def);
@@ -39,6 +40,17 @@
             @foreach ($managers as $m)
                 <option value="{{ $m->odoo_id }}" {{ (int) $val('parent_id') === $m->odoo_id ? 'selected' : '' }}>
                     {{ $m->name }}
+                </option>
+            @endforeach
+        </select>
+    </div>
+    <div>
+        <label class="block text-sm font-medium mb-1">{{ __('Office') }}</label>
+        <select name="work_location_id" class="w-full border rounded px-3 py-2 bg-white">
+            <option value="">{{ __('— Select —') }}</option>
+            @foreach ($workLocations as $w)
+                <option value="{{ $w->odoo_id }}" {{ (int) $val('work_location_id') === $w->odoo_id ? 'selected' : '' }}>
+                    {{ $w->name }}
                 </option>
             @endforeach
         </select>

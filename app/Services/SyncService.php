@@ -11,6 +11,7 @@ use App\Models\LeaveType;
 use App\Models\Payslip;
 use App\Models\PayslipLine;
 use App\Models\SyncLog;
+use App\Models\WorkLocation;
 use Carbon\Carbon;
 use Throwable;
 
@@ -24,6 +25,7 @@ class SyncService
     public function syncAll(): array
     {
         return [
+            'work_locations' => $this->syncWorkLocations(),
             'departments' => $this->syncDepartments(),
             'employees'   => $this->syncEmployees(),
             'leave_types' => $this->syncLeaveTypes(),
@@ -206,6 +208,57 @@ class SyncService
         }
     }
 
+    public function syncWorkLocations(): SyncLog
+    {
+        return $this->runSync('hr.work.location', function () {
+            // active_test=false so archived locations sync too (kept locally
+            // with active=false instead of silently disappearing).
+            $rows = $this->odoo->searchRead(
+                'hr.work.location', [['active', 'in', [true, false]]],
+                ['id', 'name', 'location_type', 'address_id', 'active'],
+                0, 0, 'id asc'
+            );
+
+            $count = 0;
+            foreach ($rows as $row) {
+                $this->writeWorkLocation($row);
+                $count++;
+            }
+            return $count;
+        });
+    }
+
+    public function refreshWorkLocation(int $odooId): ?WorkLocation
+    {
+        try {
+            $rows = $this->odoo->read('hr.work.location', [$odooId],
+                ['id', 'name', 'location_type', 'address_id', 'active']);
+            if (empty($rows)) return null;
+
+            return $this->writeWorkLocation($rows[0]);
+        } catch (Throwable) {
+            return null;
+        }
+    }
+
+    /**
+     * Writes only the Odoo-sourced columns. latitude/longitude/geofence_radius
+     * are managed in Laravel and must survive every sync.
+     */
+    protected function writeWorkLocation(array $row): WorkLocation
+    {
+        return WorkLocation::updateOrCreate(
+            ['odoo_id' => $row['id']],
+            [
+                'name'          => $row['name'],
+                'location_type' => is_string($row['location_type'] ?? null) ? $row['location_type'] : null,
+                'address_name'  => OdooService::many2oneName($row['address_id']),
+                'active'        => (bool) ($row['active'] ?? true),
+                'synced_at'     => now(),
+            ]
+        );
+    }
+
     public function syncDepartments(): SyncLog
     {
         return $this->runSync('hr.department', function () {
@@ -241,7 +294,8 @@ class SyncService
             $rows = $this->odoo->searchRead(
                 'hr.employee', [],
                 ['id', 'name', 'job_title', 'work_email', 'work_phone',
-                 'mobile_phone', 'department_id', 'parent_id', 'active', 'image_128'],
+                 'mobile_phone', 'department_id', 'parent_id', 'work_location_id',
+                 'active', 'image_128'],
                 0, 0, 'id asc'
             );
 
@@ -259,6 +313,8 @@ class SyncService
                         'department_name'    => OdooService::many2oneName($row['department_id']),
                         'odoo_parent_id'     => OdooService::many2oneId($row['parent_id']),
                         'parent_name'        => OdooService::many2oneName($row['parent_id']),
+                        'odoo_work_location_id' => OdooService::many2oneId($row['work_location_id']),
+                        'work_location_name'    => OdooService::many2oneName($row['work_location_id']),
                         'active'             => (bool) ($row['active'] ?? true),
                         'image_small'        => is_string($row['image_128'] ?? null) ? $row['image_128'] : null,
                         'synced_at'          => now(),
@@ -398,7 +454,8 @@ class SyncService
         try {
             $rows = $this->odoo->read('hr.employee', [$odooId],
                 ['id', 'name', 'job_title', 'work_email', 'work_phone',
-                 'mobile_phone', 'department_id', 'parent_id', 'active', 'image_128']);
+                 'mobile_phone', 'department_id', 'parent_id', 'work_location_id',
+                 'active', 'image_128']);
             if (empty($rows)) return null;
             $row = $rows[0];
 
@@ -414,6 +471,8 @@ class SyncService
                     'department_name'    => OdooService::many2oneName($row['department_id']),
                     'odoo_parent_id'     => OdooService::many2oneId($row['parent_id']),
                     'parent_name'        => OdooService::many2oneName($row['parent_id']),
+                    'odoo_work_location_id' => OdooService::many2oneId($row['work_location_id']),
+                    'work_location_name'    => OdooService::many2oneName($row['work_location_id']),
                     'active'             => (bool) ($row['active'] ?? true),
                     'image_small'        => is_string($row['image_128'] ?? null) ? $row['image_128'] : null,
                     'synced_at'          => now(),

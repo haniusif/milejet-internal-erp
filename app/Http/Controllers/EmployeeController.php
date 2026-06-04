@@ -8,6 +8,7 @@ use App\Models\Department;
 use App\Models\Employee;
 use App\Models\Leave;
 use App\Models\Payslip;
+use App\Models\WorkLocation;
 use App\Services\OdooService;
 use App\Services\SyncService;
 use Illuminate\Http\Request;
@@ -49,7 +50,8 @@ class EmployeeController extends Controller
     {
         $departments = Department::orderBy('name')->get();
         $managers = Employee::where('active', true)->orderBy('name')->get();
-        return view('employees.create', compact('departments', 'managers'));
+        $workLocations = WorkLocation::where('active', true)->orderBy('name')->get();
+        return view('employees.create', compact('departments', 'managers', 'workLocations'));
     }
 
     public function store(Request $request)
@@ -62,6 +64,7 @@ class EmployeeController extends Controller
             'job_title'     => 'nullable|string|max:255',
             'department_id' => 'nullable|integer',
             'parent_id'     => 'nullable|integer',
+            'work_location_id' => 'nullable|integer',
         ]);
 
         $payload = array_filter($data, fn($v) => $v !== null && $v !== '');
@@ -136,8 +139,9 @@ class EmployeeController extends Controller
         $managers = Employee::where('active', true)
             ->where('odoo_id', '!=', $employee->odoo_id)
             ->orderBy('name')->get();
+        $workLocations = WorkLocation::where('active', true)->orderBy('name')->get();
 
-        return view('employees.edit', compact('employee', 'departments', 'managers'));
+        return view('employees.edit', compact('employee', 'departments', 'managers', 'workLocations'));
     }
 
     public function update(Request $request, int $id)
@@ -152,11 +156,12 @@ class EmployeeController extends Controller
             'job_title'     => 'nullable|string|max:255',
             'department_id' => 'nullable|integer',
             'parent_id'     => 'nullable|integer',
+            'work_location_id' => 'nullable|integer',
         ]);
 
         // تحويل القيم الفارغة للـ many2one إلى false (لفك الربط في Odoo)
         $payload = $data;
-        foreach (['department_id', 'parent_id'] as $f) {
+        foreach (['department_id', 'parent_id', 'work_location_id'] as $f) {
             if (empty($payload[$f])) $payload[$f] = false;
         }
 

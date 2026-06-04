@@ -24,6 +24,11 @@ class Employee extends Model
         return $this->belongsTo(Department::class, 'odoo_department_id', 'odoo_id');
     }
 
+    public function workLocation(): BelongsTo
+    {
+        return $this->belongsTo(WorkLocation::class, 'odoo_work_location_id', 'odoo_id');
+    }
+
     public function leaves(): HasMany
     {
         return $this->hasMany(Leave::class, 'odoo_employee_id', 'odoo_id');

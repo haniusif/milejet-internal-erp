@@ -9,6 +9,7 @@ use App\Http\Controllers\EmployeeController;
 use App\Http\Controllers\LeaveController;
 use App\Http\Controllers\PayslipController;
 use App\Http\Controllers\PreferencesController;
+use App\Http\Controllers\WorkLocationController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/login',   [AuthController::class, 'showLogin'])->name('login');
@@ -49,6 +50,18 @@ Route::middleware('auth')->group(function () {
         });
         Route::delete('/{id}', 'destroy')->whereNumber('id')->name('destroy')
             ->middleware('can:departments.delete');
+    });
+
+    Route::prefix('work-locations')->name('work-locations.')->controller(WorkLocationController::class)->group(function () {
+        Route::get('/', 'index')->name('index');
+        Route::middleware('can:work_locations.write')->group(function () {
+            Route::get('/create',    'create')->name('create');
+            Route::post('/',         'store')->name('store');
+            Route::get('/{id}/edit', 'edit')->whereNumber('id')->name('edit');
+            Route::put('/{id}',      'update')->whereNumber('id')->name('update');
+        });
+        Route::delete('/{id}', 'destroy')->whereNumber('id')->name('destroy')
+            ->middleware('can:work_locations.delete');
     });
 
     Route::prefix('leaves')->name('leaves.')->controller(LeaveController::class)->group(function () {

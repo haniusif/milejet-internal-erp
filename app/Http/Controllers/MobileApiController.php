@@ -8,6 +8,7 @@ use App\Models\Leave;
 use App\Models\LeaveType;
 use App\Models\Payslip;
 use App\Models\User;
+use App\Models\WorkLocation;
 use App\Services\OdooRoleMapper;
 use App\Services\OdooService;
 use Illuminate\Http\JsonResponse;
@@ -361,14 +362,14 @@ class MobileApiController extends Controller
 
     public function attendanceConfig(Request $request): JsonResponse
     {
-        $lat = config('attendance.office_lat');
-        $lng = config('attendance.office_lng');
+        $fence = $this->resolveGeofence($request->user()->odoo_employee_id);
 
         return response()->json([
-            'latitude'  => $lat !== null ? (float) $lat : null,
-            'longitude' => $lng !== null ? (float) $lng : null,
-            'radius'    => (int) config('attendance.geofence_radius'),
-            'enforce'   => (bool) config('attendance.geofence_enforce'),
+            'latitude'    => $fence['lat'],
+            'longitude'   => $fence['lng'],
+            'radius'      => $fence['radius'],
+            'enforce'     => (bool) config('attendance.geofence_enforce'),
+            'office_name' => $fence['name'],
         ]);
     }
 
@@ -420,7 +421,7 @@ class MobileApiController extends Controller
         $lat = $loc['latitude']  ?? null;
         $lng = $loc['longitude'] ?? null;
 
-        if ($error = $this->geofenceError($lat, $lng)) {
+        if ($error = $this->geofenceError($lat, $lng, $user->odoo_employee_id)) {
             return response()->json(['message' => $error], 422);
         }
 
@@ -491,7 +492,7 @@ class MobileApiController extends Controller
         $lat = $loc['latitude']  ?? null;
         $lng = $loc['longitude'] ?? null;
 
-        if ($error = $this->geofenceError($lat, $lng)) {
+        if ($error = $this->geofenceError($lat, $lng, $user->odoo_employee_id)) {
             return response()->json(['message' => $error], 422);
         }
 
@@ -584,20 +585,55 @@ class MobileApiController extends Controller
     }
 
     /**
-     * Returns a friendly error message if the given coordinates violate the
-     * geofence policy, or null if the punch is allowed.
+     * Resolves the geofence for an employee: their assigned work location
+     * (active + coordinates set) wins; otherwise the global .env office.
+     * Returns ['lat' => ?float, 'lng' => ?float, 'radius' => int, 'name' => ?string].
      */
-    private function geofenceError($lat, $lng): ?string
+    private function resolveGeofence(?int $odooEmployeeId): array
+    {
+        if ($odooEmployeeId) {
+            $emp = Employee::where('odoo_id', $odooEmployeeId)->first();
+            if ($emp?->odoo_work_location_id) {
+                $office = WorkLocation::where('odoo_id', $emp->odoo_work_location_id)
+                    ->where('active', true)
+                    ->first();
+                if ($office?->hasGeofence()) {
+                    return [
+                        'lat'    => (float) $office->latitude,
+                        'lng'    => (float) $office->longitude,
+                        'radius' => $office->radius(),
+                        'name'   => $office->name,
+                    ];
+                }
+            }
+        }
+
+        $lat = config('attendance.office_lat');
+        $lng = config('attendance.office_lng');
+
+        return [
+            'lat'    => $lat !== null ? (float) $lat : null,
+            'lng'    => $lng !== null ? (float) $lng : null,
+            'radius' => (int) config('attendance.geofence_radius'),
+            'name'   => null,
+        ];
+    }
+
+    /**
+     * Returns a friendly error message if the given coordinates violate the
+     * geofence policy, or null if the punch is allowed. Validates against the
+     * employee's assigned office when one is configured.
+     */
+    private function geofenceError($lat, $lng, ?int $odooEmployeeId = null): ?string
     {
         if (!config('attendance.geofence_enforce')) {
             return null;
         }
 
-        $officeLat = config('attendance.office_lat');
-        $officeLng = config('attendance.office_lng');
+        $fence = $this->resolveGeofence($odooEmployeeId);
 
         // Geofence not configured → nothing to enforce.
-        if ($officeLat === null || $officeLng === null) {
+        if ($fence['lat'] === null || $fence['lng'] === null) {
             return null;
         }
 
@@ -605,14 +641,13 @@ class MobileApiController extends Controller
             return 'Location is required to check in. Please enable location and try again.';
         }
 
-        $radius   = (int) config('attendance.geofence_radius');
-        $distance = $this->distanceMeters((float) $lat, (float) $lng, (float) $officeLat, (float) $officeLng);
+        $distance = $this->distanceMeters((float) $lat, (float) $lng, $fence['lat'], $fence['lng']);
 
-        if ($distance > $radius) {
+        if ($distance > $fence['radius']) {
             return sprintf(
                 'You are %d m away from the office. You must be within %d m to check in/out.',
                 (int) round($distance),
-                $radius
+                $fence['radius']
             );
         }
 

@@ -23,6 +23,8 @@ class AppServiceProvider extends ServiceProvider
             'employees.delete'  => ['admin', 'hr_manager'],
             'departments.write' => ['admin', 'hr_manager'],
             'departments.delete'=> ['admin', 'hr_manager'],
+            'work_locations.write'  => ['admin', 'hr_manager'],
+            'work_locations.delete' => ['admin', 'hr_manager'],
             'leaves.approve'    => ['admin', 'leave_manager', 'hr_manager'],
             'leaves.delete'     => ['admin', 'hr_manager', 'leave_manager'],
             'contracts.view'    => ['admin', 'hr_manager', 'hr_officer', 'payroll_manager', 'payroll_officer'],
