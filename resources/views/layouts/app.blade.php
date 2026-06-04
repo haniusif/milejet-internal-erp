@@ -19,11 +19,18 @@
                         sans: ['Cairo', 'Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
                     },
                     colors: {
+                        // MileJet brand — navy + orange from the logo
                         brand: {
-                            50:  '#f5f3ff', 100: '#ede9fe', 200: '#ddd6fe',
-                            300: '#c4b5fd', 400: '#a78bfa', 500: '#8b5cf6',
-                            600: '#7c3aed', 700: '#6d28d9', 800: '#5b21b6',
-                            900: '#4c1d95',
+                            50:  '#f0f6fb', 100: '#dceaf5', 200: '#bdd6ea',
+                            300: '#8fb8d8', 400: '#5a93c0', 500: '#3674a6',
+                            600: '#265c8a', 700: '#1d4970', 800: '#14375a',
+                            900: '#0d2943',
+                        },
+                        accent: {
+                            50:  '#fef4ec', 100: '#fde8db', 200: '#fbd0b5',
+                            300: '#f7a877', 400: '#f48144', 500: '#ef6925',
+                            600: '#d9571a', 700: '#b34715', 800: '#8f3a14',
+                            900: '#743112',
                         }
                     },
                     boxShadow: {
@@ -49,6 +56,7 @@
 <body class="bg-slate-50 text-slate-800 dark:bg-slate-950 dark:text-slate-100 min-h-screen antialiased transition-colors">
 
 @auth
+@sectionMissing('chromeless')
 @php
     $icons = [
         'dashboard'     => '<path d="M3 13h8V3H3v10Zm0 8h8v-6H3v6Zm10 0h8V11h-8v10Zm0-18v6h8V3h-8Z"/>',
@@ -98,22 +106,18 @@
     <div class="max-w-7xl mx-auto px-4">
         <div class="flex items-center justify-between h-16">
             <div class="flex items-center gap-2">
-                <a href="{{ route('dashboard') }}" class="flex items-center gap-2 font-bold text-slate-900 dark:text-slate-100 {{ $dir === 'rtl' ? 'ml-4' : 'mr-4' }} group">
-                    <span class="grid place-items-center w-9 h-9 rounded-lg bg-gradient-to-br from-brand-600 to-brand-800 text-white shadow-soft">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" class="ico">
-                            <path d="M12 2 2 7l10 5 10-5-10-5Z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/>
-                        </svg>
-                    </span>
-                    <span class="text-base leading-none tracking-tight">
-                        MileJet <span class="text-brand-600 dark:text-brand-400">HR</span>
+                <a href="{{ route('dashboard') }}" class="flex items-center {{ $dir === 'rtl' ? 'ml-4' : 'mr-4' }}">
+                    {{-- white chip keeps the navy logo visible on the dark-mode header --}}
+                    <span class="inline-flex items-center rounded-lg dark:bg-white px-1.5 py-1">
+                        <img src="{{ asset('img/milejet-logo.png') }}" alt="MileJet" class="h-8 w-auto">
                     </span>
                 </a>
                 <nav class="hidden md:flex items-center gap-0.5">
                     @foreach ($nav as $pattern => [$label, $gate])
                         @if (!$gate || $user->can($gate))
                             @php $active = request()->routeIs($pattern); @endphp
-                            <a href="{{ route($routes[$pattern]) }}"
-                               class="inline-flex items-center gap-2 px-3 h-9 rounded-md text-sm transition
+                            <a href="{{ route($routes[$pattern]) }}" title="{{ $label }}"
+                               class="inline-flex items-center gap-2 px-2.5 h-9 rounded-md text-sm whitespace-nowrap transition
                                       {{ $active
                                         ? 'bg-brand-50 text-brand-700 font-semibold dark:bg-brand-900/40 dark:text-brand-300'
                                         : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100' }}">
@@ -121,14 +125,26 @@
                                      stroke-linecap="round" stroke-linejoin="round" class="ico-sm">
                                     {!! $icons[$pattern] ?? '' !!}
                                 </svg>
-                                <span>{{ $label }}</span>
+                                <span class="hidden xl:inline">{{ $label }}</span>
                             </a>
                         @endif
                     @endforeach
                 </nav>
             </div>
 
-            <div class="flex items-center gap-2">
+            <div class="flex items-center gap-2 shrink-0">
+                {{-- Portal hub --}}
+                @if (request()->getHost() !== config('domains.portal'))
+                <a href="{{ route('portal.home') }}" title="{{ __('Portal') }}"
+                   class="inline-flex items-center justify-center h-9 w-9 rounded-md
+                          bg-slate-100 text-slate-700 hover:bg-slate-200
+                          dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 transition">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ico-sm">
+                        <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
+                    </svg>
+                </a>
+                @endif
+
                 {{-- Language toggle --}}
                 <a href="{{ route('preferences.locale', $otherLocale) }}"
                    title="{{ $otherLocale === 'ar' ? __('Switch to Arabic') : __('Switch to English') }}"
@@ -176,20 +192,19 @@
                 </form>
                 @endcan
 
-                <div class="relative group">
-                    <button type="button"
-                            class="inline-flex items-center gap-2 h-9 ps-1 pe-3 rounded-full bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 transition">
+                <div class="relative" id="user-menu-wrap">
+                    <button type="button" id="user-menu-button"
+                            aria-haspopup="true" aria-expanded="false" aria-label="{{ __('Account menu') }}"
+                            class="inline-flex items-center gap-1 h-9 ps-1 pe-2 rounded-full bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 transition">
                         <span class="grid place-items-center w-7 h-7 rounded-full bg-brand-600 text-white text-xs font-bold">
                             {{ mb_strtoupper(mb_substr($user->name, 0, 1)) }}
                         </span>
-                        <span class="text-sm font-medium text-slate-700 dark:text-slate-200">{{ $user->name }}</span>
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="ico-sm text-slate-400">
                             <path d="m6 9 6 6 6-6"/>
                         </svg>
                     </button>
-                    <div class="absolute end-0 mt-1 w-72 origin-top-right rounded-lg bg-white dark:bg-slate-900 shadow-soft ring-1 ring-slate-200 dark:ring-slate-800
-                                opacity-0 invisible group-hover:opacity-100 group-hover:visible focus-within:opacity-100 focus-within:visible
-                                transition z-30">
+                    <div id="user-menu"
+                         class="hidden absolute end-0 mt-2 w-72 rounded-lg bg-white dark:bg-slate-900 shadow-soft ring-1 ring-slate-200 dark:ring-slate-800 z-30">
                         <div class="p-3 border-b border-slate-100 dark:border-slate-800">
                             <p class="text-sm font-semibold text-slate-900 dark:text-slate-100">{{ $user->name }}</p>
                             <p class="text-xs text-slate-500 dark:text-slate-400 truncate">{{ $user->email }}</p>
@@ -240,6 +255,7 @@
         </nav>
     </div>
 </header>
+@endif
 @endauth
 
 <main class="max-w-7xl mx-auto px-4 py-6">
@@ -263,5 +279,31 @@
     @endif
     @yield('content')
 </main>
+
+@auth
+<script>
+    (function () {
+        const wrap = document.getElementById('user-menu-wrap');
+        const btn  = document.getElementById('user-menu-button');
+        const menu = document.getElementById('user-menu');
+        if (!wrap || !btn || !menu) return;
+
+        function setOpen(open) {
+            menu.classList.toggle('hidden', !open);
+            btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+        }
+        btn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            setOpen(menu.classList.contains('hidden'));
+        });
+        document.addEventListener('click', function (e) {
+            if (!wrap.contains(e.target)) setOpen(false);
+        });
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape') setOpen(false);
+        });
+    })();
+</script>
+@endauth
 </body>
 </html>
