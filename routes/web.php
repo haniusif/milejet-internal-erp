@@ -12,6 +12,17 @@ use App\Http\Controllers\PreferencesController;
 use App\Http\Controllers\WorkLocationController;
 use Illuminate\Support\Facades\Route;
 
+/*
+ * Domain-bound module roots (portal hub, CRM, Fleet) — registered first
+ * so they win the '/' match on their own subdomains. Everything below is
+ * domain-agnostic and answers on any host pointed at this app (today
+ * portal.milejet.space; later hr.milejet.space too).
+ */
+require __DIR__.'/portal.php';
+require __DIR__.'/crm.php';
+require __DIR__.'/fleet.php';
+require __DIR__.'/finance.php';
+
 Route::get('/login',   [AuthController::class, 'showLogin'])->name('login');
 Route::post('/login',  [AuthController::class, 'login']);
 Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
@@ -23,7 +34,10 @@ Route::get('/theme/{theme}', [PreferencesController::class, 'setTheme'])
 
 Route::middleware('auth')->group(function () {
 
-    Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
+    // '/' on the portal host is the hub (routes/portal.php); on every
+    // other host it falls through to here and lands on the dashboard.
+    Route::redirect('/', '/dashboard');
+    Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
     Route::post('/sync', [DashboardController::class, 'sync'])
         ->middleware('can:sync.run')->name('sync');
 

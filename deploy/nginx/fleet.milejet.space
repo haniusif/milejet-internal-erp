@@ -1,0 +1,35 @@
+# fleet.milejet.space → milejet-internal-erp (Fleet module)
+#
+# Prerequisites:
+#   1. DNS: add an A/CNAME record for fleet.milejet.space (only fleets.*
+#      exists today, serving the legacy app on Docker PHP 8.1).
+#   2. Cert: sudo certbot --nginx -d fleet.milejet.space
+#      (certbot will add the ssl_certificate lines + the 80→443 redirect)
+#
+# Install:
+#   sudo cp deploy/nginx/fleet.milejet.space /etc/nginx/sites-available/fleet.milejet.space
+#   sudo ln -s /etc/nginx/sites-available/fleet.milejet.space /etc/nginx/sites-enabled/
+#   sudo nginx -t && sudo systemctl reload nginx
+
+server {
+    listen 80;
+    server_name fleet.milejet.space;
+
+    root /var/www/milejet-internal-erp/public;
+    index index.php index.html;
+
+    client_max_body_size 100M;
+
+    location / {
+        try_files $uri $uri/ /index.php?$query_string;
+    }
+
+    location ~ \.php$ {
+        include snippets/fastcgi-php.conf;
+        fastcgi_pass unix:/run/php/php8.4-fpm.sock;
+    }
+
+    location ~ /\.ht {
+        deny all;
+    }
+}

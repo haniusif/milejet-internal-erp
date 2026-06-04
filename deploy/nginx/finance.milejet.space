@@ -1,0 +1,28 @@
+# finance.milejet.space → milejet-internal-erp (Finance module)
+#
+# DNS exists (Cloudflare-proxied). Installed/enabled on 2026-06-05.
+# After enabling, issue the origin cert (adds 443 + redirect):
+#   sudo certbot --nginx -d finance.milejet.space
+
+server {
+    listen 80;
+    server_name finance.milejet.space;
+
+    root /var/www/milejet-internal-erp/public;
+    index index.php index.html;
+
+    client_max_body_size 100M;
+
+    location / {
+        try_files $uri $uri/ /index.php?$query_string;
+    }
+
+    location ~ \.php$ {
+        include snippets/fastcgi-php.conf;
+        fastcgi_pass unix:/run/php/php8.4-fpm.sock;
+    }
+
+    location ~ /\.ht {
+        deny all;
+    }
+}

@@ -1,0 +1,43 @@
+# hr.milejet.space → milejet-internal-erp (HR module)
+#
+# NOT YET DECIDED: hr.milejet.space currently serves the legacy Laravel 10
+# app at /var/www/milejet-hr. Apply this file only when you're ready to
+# retire/relocate the legacy app. A certbot cert already exists.
+#
+# Switch:
+#   sudo cp deploy/nginx/hr.milejet.space /etc/nginx/sites-available/milejet-hr
+#   sudo nginx -t && sudo systemctl reload nginx
+# Roll back: restore the previous file from a backup copy.
+
+server {
+    server_name hr.milejet.space;
+
+    root /var/www/milejet-internal-erp/public;
+    index index.php index.html;
+
+    client_max_body_size 100M;
+
+    location / {
+        try_files $uri $uri/ /index.php?$query_string;
+    }
+
+    location ~ \.php$ {
+        include snippets/fastcgi-php.conf;
+        fastcgi_pass unix:/run/php/php8.4-fpm.sock;
+    }
+
+    location ~ /\.ht {
+        deny all;
+    }
+
+    listen 443 ssl;
+    ssl_certificate /etc/letsencrypt/live/hr.milejet.space/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/hr.milejet.space/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+}
+server {
+    listen 80;
+    server_name hr.milejet.space;
+    return 301 https://$host$request_uri;
+}

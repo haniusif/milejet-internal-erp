@@ -1,0 +1,42 @@
+# crm.milejet.space → milejet-internal-erp (CRM module)
+#
+# A certbot cert already exists for crm.milejet.space (issued for the
+# legacy CRM vhost) — this file reuses it.
+#
+# Switch (replaces the legacy CRM app on this subdomain):
+#   sudo cp deploy/nginx/crm.milejet.space /etc/nginx/sites-available/crm.milejet.space
+#   sudo nginx -t && sudo systemctl reload nginx
+# Roll back: restore the previous file from git or a backup copy.
+
+server {
+    server_name crm.milejet.space;
+
+    root /var/www/milejet-internal-erp/public;
+    index index.php index.html;
+
+    client_max_body_size 100M;
+
+    location / {
+        try_files $uri $uri/ /index.php?$query_string;
+    }
+
+    location ~ \.php$ {
+        include snippets/fastcgi-php.conf;
+        fastcgi_pass unix:/run/php/php8.4-fpm.sock;
+    }
+
+    location ~ /\.ht {
+        deny all;
+    }
+
+    listen 443 ssl;
+    ssl_certificate /etc/letsencrypt/live/crm.milejet.space/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/crm.milejet.space/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+}
+server {
+    listen 80;
+    server_name crm.milejet.space;
+    return 301 https://$host$request_uri;
+}
