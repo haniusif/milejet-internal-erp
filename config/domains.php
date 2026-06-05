@@ -24,14 +24,13 @@ return [
      * Where the portal hub cards point today. As each subdomain is
      * repointed to this app, the default (its own https:// host) becomes
      * correct automatically; override via env during transition.
-     * hr + crm + finance subdomains serve this app since 2026-06-05.
-     * 'fleet' still points at the legacy fleets.* app until the DNS record
-     * for fleet.* exists.
+     * hr + crm + fleet + finance subdomains all serve this app since
+     * 2026-06-05 (legacy fleets.* now 301s to fleet.*).
      */
     'links' => [
         'hr'    => env('PORTAL_LINK_HR',    "https://hr.{$base}"),
         'crm'   => env('PORTAL_LINK_CRM',   "https://crm.{$base}"),
-        'fleet' => env('PORTAL_LINK_FLEET', "http://fleets.{$base}"),
+        'fleet' => env('PORTAL_LINK_FLEET', "https://fleet.{$base}"),
         'finance' => env('PORTAL_LINK_FINANCE', "https://finance.{$base}"),
         'erp'   => env('PORTAL_LINK_ERP',   "https://erp.{$base}"),
     ],
