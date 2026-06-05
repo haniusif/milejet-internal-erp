@@ -5,6 +5,9 @@ namespace App\Services;
 use App\Models\Applicant;
 use App\Models\Attendance;
 use App\Models\Contract;
+use App\Models\CrmCustomer;
+use App\Models\CrmLead;
+use App\Models\CrmStage;
 use App\Models\Department;
 use App\Models\Employee;
 use App\Models\JobPosition;
@@ -37,7 +40,100 @@ class SyncService
             'contracts'   => $this->syncContracts(),
             'payslips'    => $this->syncPayslips(),
             'recruitment' => $this->syncRecruitment(),
+            'crm'         => $this->syncCrm(),
         ];
+    }
+
+    /** CRM stages + leads/opportunities + customers in one logical unit. */
+    public function syncCrm(): SyncLog
+    {
+        return $this->runSync('crm', function () {
+            $count = 0;
+
+            // Pipeline stages
+            $rows = $this->odoo->searchRead(
+                'crm.stage', [],
+                ['id', 'name', 'sequence', 'is_won', 'fold'],
+                0, 0, 'sequence asc'
+            );
+            foreach ($rows as $row) {
+                CrmStage::updateOrCreate(
+                    ['odoo_id' => $row['id']],
+                    [
+                        'name'      => $row['name'],
+                        'sequence'  => $row['sequence'] ?? 0,
+                        'is_won'    => (bool) ($row['is_won'] ?? false),
+                        'fold'      => (bool) ($row['fold'] ?? false),
+                        'synced_at' => now(),
+                    ]
+                );
+                $count++;
+            }
+
+            // Leads / opportunities (archived = lost; kept for history). Last 1000.
+            $rows = $this->odoo->searchRead(
+                'crm.lead', [['active', 'in', [true, false]]],
+                ['id', 'name', 'type', 'contact_name', 'partner_name', 'partner_id',
+                 'email_from', 'phone', 'mobile', 'expected_revenue', 'probability',
+                 'stage_id', 'user_id', 'date_deadline', 'priority', 'lost_reason_id',
+                 'active', 'create_date'],
+                1000, 0, 'id desc'
+            );
+            foreach ($rows as $row) {
+                CrmLead::updateOrCreate(
+                    ['odoo_id' => $row['id']],
+                    [
+                        'name'             => $row['name'] ?: '—',
+                        'type'             => $row['type'] ?: 'opportunity',
+                        'contact_name'     => $row['contact_name'] ?: null,
+                        'partner_name'     => $row['partner_name'] ?: null,
+                        'odoo_partner_id'  => OdooService::many2oneId($row['partner_id']),
+                        'email_from'       => $row['email_from'] ?: null,
+                        'phone'            => $row['phone'] ?: null,
+                        'mobile'           => $row['mobile'] ?: null,
+                        'expected_revenue' => $row['expected_revenue'] ?: null,
+                        'probability'      => $row['probability'] ?: null,
+                        'odoo_stage_id'    => OdooService::many2oneId($row['stage_id']),
+                        'stage_name'       => OdooService::many2oneName($row['stage_id']),
+                        'salesperson_name' => OdooService::many2oneName($row['user_id']),
+                        'date_deadline'    => $this->parseOdooDate($row['date_deadline']),
+                        'priority'         => $row['priority'] ?: null,
+                        'lost_reason'      => OdooService::many2oneName($row['lost_reason_id']),
+                        'active'           => (bool) ($row['active'] ?? true),
+                        'odoo_create_date' => $this->parseOdooDate($row['create_date']),
+                        'synced_at'        => now(),
+                    ]
+                );
+                $count++;
+            }
+
+            // Customers: partners flagged as customers (customer_rank > 0)
+            $rows = $this->odoo->searchRead(
+                'res.partner', [['customer_rank', '>', 0]],
+                ['id', 'name', 'is_company', 'email', 'phone', 'mobile', 'city', 'country_id', 'vat', 'active'],
+                1000, 0, 'id desc'
+            );
+            foreach ($rows as $row) {
+                CrmCustomer::updateOrCreate(
+                    ['odoo_id' => $row['id']],
+                    [
+                        'name'         => $row['name'] ?: '—',
+                        'is_company'   => (bool) ($row['is_company'] ?? false),
+                        'email'        => $row['email'] ?: null,
+                        'phone'        => $row['phone'] ?: null,
+                        'mobile'       => $row['mobile'] ?: null,
+                        'city'         => $row['city'] ?: null,
+                        'country_name' => OdooService::many2oneName($row['country_id']),
+                        'vat'          => $row['vat'] ?: null,
+                        'active'       => (bool) ($row['active'] ?? true),
+                        'synced_at'    => now(),
+                    ]
+                );
+                $count++;
+            }
+
+            return $count;
+        });
     }
 
     /** Jobs + stages + applicants in one logical unit. */

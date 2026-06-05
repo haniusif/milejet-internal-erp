@@ -27,7 +27,8 @@ class SyncOdooCommand extends Command
             'contracts'   => ['syncContracts'],
             'payslips'    => ['syncPayslips'],
             'recruitment' => ['syncRecruitment'],
-            'all'         => ['syncWorkLocations', 'syncDepartments', 'syncEmployees', 'syncLeaveTypes', 'syncLeaves', 'syncAttendances', 'syncContracts', 'syncPayslips', 'syncRecruitment'],
+            'crm'         => ['syncCrm'],
+            'all'         => ['syncWorkLocations', 'syncDepartments', 'syncEmployees', 'syncLeaveTypes', 'syncLeaves', 'syncAttendances', 'syncContracts', 'syncPayslips', 'syncRecruitment', 'syncCrm'],
             default       => null,
         };
 

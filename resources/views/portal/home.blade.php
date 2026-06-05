@@ -22,8 +22,9 @@
             [
                 'label' => __('CRM'),
                 'desc'  => __('Customers, leads and sales pipeline'),
-                'href'  => $links['crm'],
-                'external' => true,
+                'href'  => $links['crm'] ?: route('crm.index'),
+                'external' => (bool) $links['crm'],
+                'gate'  => 'crm.view',
                 'grad'  => 'from-sky-500 to-sky-700',
                 'icon'  => '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="m16 11 2 2 4-4"/>',
             ],
@@ -105,6 +106,7 @@
 
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             @foreach ($apps as $app)
+                @continue(isset($app['gate']) && !auth()->user()->can($app['gate']))
                 <a href="{{ $app['href'] }}" @if($app['external']) rel="noopener" @endif
                    class="group flex items-start gap-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 transition
                           hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-soft">

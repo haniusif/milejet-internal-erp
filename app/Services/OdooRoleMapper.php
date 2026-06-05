@@ -39,6 +39,13 @@ class OdooRoleMapper
         'recruitment_officer' => [
             'Recruitment / Officer: Manage all applicants',
         ],
+        'crm_manager' => [
+            'Sales / Administrator',
+        ],
+        'crm_user' => [
+            'Sales / User: All Documents',
+            'Sales / User: Own Documents Only',
+        ],
         'employee' => [
             'User types / Internal User',
         ],
@@ -92,6 +99,11 @@ class OdooRoleMapper
         // recruitment_manager implies recruitment_officer
         if (in_array('recruitment_manager', $roles, true) && !in_array('recruitment_officer', $roles, true)) {
             $roles[] = 'recruitment_officer';
+        }
+
+        // crm_manager implies crm_user
+        if (in_array('crm_manager', $roles, true) && !in_array('crm_user', $roles, true)) {
+            $roles[] = 'crm_user';
         }
 
         // Every authenticated user is at least "employee"

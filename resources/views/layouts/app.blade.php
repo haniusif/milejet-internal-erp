@@ -101,6 +101,8 @@
         'leave_manager'   => [__('Role: Leave Manager'),    'bg-amber-50 text-amber-700 ring-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:ring-amber-800'],
         'recruitment_manager' => [__('Role: Recruitment Manager'), 'bg-sky-50 text-sky-700 ring-sky-200 dark:bg-sky-900/40 dark:text-sky-300 dark:ring-sky-800'],
         'recruitment_officer' => [__('Role: Recruitment Officer'), 'bg-cyan-50 text-cyan-700 ring-cyan-200 dark:bg-cyan-900/40 dark:text-cyan-300 dark:ring-cyan-800'],
+        'crm_manager'         => [__('Role: Sales Manager'),       'bg-violet-50 text-violet-700 ring-violet-200 dark:bg-violet-900/40 dark:text-violet-300 dark:ring-violet-800'],
+        'crm_user'            => [__('Role: Salesperson'),         'bg-fuchsia-50 text-fuchsia-700 ring-fuchsia-200 dark:bg-fuchsia-900/40 dark:text-fuchsia-300 dark:ring-fuchsia-800'],
         'employee'        => [__('Role: Employee'),         'bg-slate-100 text-slate-600 ring-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:ring-slate-700'],
     ];
     $otherLocale = $locale === 'ar' ? 'en' : 'ar';

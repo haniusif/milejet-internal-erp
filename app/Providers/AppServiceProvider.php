@@ -36,6 +36,8 @@ class AppServiceProvider extends ServiceProvider
             'sync.run'          => ['admin', 'hr_manager', 'payroll_manager'],
             'recruitment.view'  => ['admin', 'hr_manager', 'hr_officer', 'recruitment_manager', 'recruitment_officer'],
             'recruitment.write' => ['admin', 'hr_manager', 'recruitment_manager', 'recruitment_officer'],
+            'crm.view'          => ['admin', 'crm_manager', 'crm_user'],
+            'crm.write'         => ['admin', 'crm_manager', 'crm_user'],
         ];
 
         foreach ($gateMap as $ability => $allowedRoles) {

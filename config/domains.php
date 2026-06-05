@@ -24,12 +24,12 @@ return [
      * Where the portal hub cards point today. As each subdomain is
      * repointed to this app, the default (its own https:// host) becomes
      * correct automatically; override via env during transition.
-     * 'hr' defaults to null = link to this app's own dashboard, because
-     * hr.milejet.space still serves the legacy Laravel 10 HR app.
+     * 'hr' and 'crm' default to null = link to this app's own in-app module
+     * (their subdomains still serve the legacy apps until repointed).
      */
     'links' => [
         'hr'    => env('PORTAL_LINK_HR'),
-        'crm'   => env('PORTAL_LINK_CRM',   "https://crm.{$base}"),
+        'crm'   => env('PORTAL_LINK_CRM'),
         'fleet' => env('PORTAL_LINK_FLEET', "http://fleets.{$base}"),
         'finance' => env('PORTAL_LINK_FINANCE', "https://finance.{$base}"),
         'erp'   => env('PORTAL_LINK_ERP',   "https://erp.{$base}"),

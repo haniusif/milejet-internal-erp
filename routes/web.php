@@ -3,6 +3,7 @@
 use App\Http\Controllers\AttendanceController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\ContractController;
+use App\Http\Controllers\CrmController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DepartmentController;
 use App\Http\Controllers\EmployeeController;
@@ -111,6 +112,22 @@ Route::middleware('auth')->group(function () {
             Route::post('/applicants/{id}/stage',  'moveStage')->whereNumber('id')->name('applicants.stage');
             Route::post('/applicants/{id}/refuse', 'refuse')->whereNumber('id')->name('applicants.refuse');
             Route::post('/applicants/{id}/restore', 'restore')->whereNumber('id')->name('applicants.restore');
+        });
+    });
+
+    Route::prefix('crm')->name('crm.')->controller(CrmController::class)
+        ->middleware('can:crm.view')->group(function () {
+        Route::get('/', 'index')->name('index');
+        Route::get('/customers', 'customers')->name('customers');
+        Route::middleware('can:crm.write')->group(function () {
+            Route::get('/leads/create',        'createLead')->name('leads.create');
+            Route::post('/leads',              'storeLead')->name('leads.store');
+            Route::post('/leads/{id}/stage',   'moveStage')->whereNumber('id')->name('leads.stage');
+            Route::post('/leads/{id}/won',     'won')->whereNumber('id')->name('leads.won');
+            Route::post('/leads/{id}/lost',    'lost')->whereNumber('id')->name('leads.lost');
+            Route::post('/leads/{id}/restore', 'restore')->whereNumber('id')->name('leads.restore');
+            Route::get('/customers/create',    'createCustomer')->name('customers.create');
+            Route::post('/customers',          'storeCustomer')->name('customers.store');
         });
     });
 
