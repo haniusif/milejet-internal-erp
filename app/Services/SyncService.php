@@ -10,6 +10,12 @@ use App\Models\CrmLead;
 use App\Models\CrmStage;
 use App\Models\Department;
 use App\Models\Employee;
+use App\Models\FinanceInvoice;
+use App\Models\FleetServiceLog;
+use App\Models\FleetServiceType;
+use App\Models\FleetVehicle;
+use App\Models\FleetVehicleModel;
+use App\Models\FleetVehicleState;
 use App\Models\JobPosition;
 use App\Models\Leave;
 use App\Models\LeaveType;
@@ -41,7 +47,150 @@ class SyncService
             'payslips'    => $this->syncPayslips(),
             'recruitment' => $this->syncRecruitment(),
             'crm'         => $this->syncCrm(),
+            'fleet'       => $this->syncFleet(),
+            'finance'     => $this->syncFinance(),
         ];
+    }
+
+    /** Customer invoices + vendor bills (account.move). Last 1000 of each. */
+    public function syncFinance(): SyncLog
+    {
+        return $this->runSync('finance', function () {
+            $count = 0;
+
+            $rows = $this->odoo->searchRead(
+                'account.move',
+                [['move_type', 'in', ['out_invoice', 'in_invoice', 'out_refund', 'in_refund']]],
+                ['id', 'move_type', 'name', 'ref', 'partner_id', 'invoice_date', 'invoice_date_due',
+                 'amount_total', 'amount_residual', 'currency_id', 'state', 'payment_state', 'journal_id'],
+                1000, 0, 'id desc'
+            );
+            foreach ($rows as $row) {
+                FinanceInvoice::updateOrCreate(
+                    ['odoo_id' => $row['id']],
+                    [
+                        'move_type'        => $row['move_type'],
+                        'name'             => $row['name'] ?: '/',
+                        'ref'              => $row['ref'] ?: null,
+                        'odoo_partner_id'  => OdooService::many2oneId($row['partner_id']),
+                        'partner_name'     => OdooService::many2oneName($row['partner_id']),
+                        'invoice_date'     => $this->parseOdooDate($row['invoice_date']),
+                        'invoice_date_due' => $this->parseOdooDate($row['invoice_date_due']),
+                        'amount_total'     => $row['amount_total'] ?: 0,
+                        'amount_residual'  => $row['amount_residual'] ?: 0,
+                        'currency'         => OdooService::many2oneName($row['currency_id']),
+                        'state'            => $row['state'] ?: null,
+                        'payment_state'    => $row['payment_state'] ?: null,
+                        'journal_name'     => OdooService::many2oneName($row['journal_id']),
+                        'synced_at'        => now(),
+                    ]
+                );
+                $count++;
+            }
+
+            return $count;
+        });
+    }
+
+    /** Fleet states + models + service types + vehicles + service logs. */
+    public function syncFleet(): SyncLog
+    {
+        return $this->runSync('fleet', function () {
+            $count = 0;
+
+            $rows = $this->odoo->searchRead('fleet.vehicle.state', [], ['id', 'name', 'sequence'], 0, 0, 'sequence asc');
+            foreach ($rows as $row) {
+                FleetVehicleState::updateOrCreate(
+                    ['odoo_id' => $row['id']],
+                    ['name' => $row['name'], 'sequence' => $row['sequence'] ?? 0, 'synced_at' => now()]
+                );
+                $count++;
+            }
+
+            $rows = $this->odoo->searchRead('fleet.vehicle.model', [], ['id', 'name', 'brand_id', 'vehicle_type'], 0, 0, 'name asc');
+            foreach ($rows as $row) {
+                FleetVehicleModel::updateOrCreate(
+                    ['odoo_id' => $row['id']],
+                    [
+                        'name'         => $row['name'],
+                        'brand_name'   => OdooService::many2oneName($row['brand_id']),
+                        'vehicle_type' => $row['vehicle_type'] ?: null,
+                        'synced_at'    => now(),
+                    ]
+                );
+                $count++;
+            }
+
+            $rows = $this->odoo->searchRead('fleet.service.type', [], ['id', 'name'], 0, 0, 'name asc');
+            foreach ($rows as $row) {
+                FleetServiceType::updateOrCreate(
+                    ['odoo_id' => $row['id']],
+                    ['name' => $row['name'], 'synced_at' => now()]
+                );
+                $count++;
+            }
+
+            $rows = $this->odoo->searchRead(
+                'fleet.vehicle', [['active', 'in', [true, false]]],
+                ['id', 'name', 'model_id', 'license_plate', 'vin_sn', 'driver_id', 'state_id',
+                 'odometer', 'odometer_unit', 'fuel_type', 'model_year', 'color', 'seats',
+                 'doors', 'acquisition_date', 'car_value', 'active'],
+                0, 0, 'id asc'
+            );
+            foreach ($rows as $row) {
+                FleetVehicle::updateOrCreate(
+                    ['odoo_id' => $row['id']],
+                    [
+                        'name'                   => $row['name'] ?: '—',
+                        'odoo_model_id'          => OdooService::many2oneId($row['model_id']),
+                        'model_name'             => OdooService::many2oneName($row['model_id']),
+                        'license_plate'          => $row['license_plate'] ?: null,
+                        'vin_sn'                 => $row['vin_sn'] ?: null,
+                        'odoo_driver_partner_id' => OdooService::many2oneId($row['driver_id']),
+                        'driver_name'            => OdooService::many2oneName($row['driver_id']),
+                        'odoo_state_id'          => OdooService::many2oneId($row['state_id']),
+                        'state_name'             => OdooService::many2oneName($row['state_id']),
+                        'odometer'               => $row['odometer'] ?? 0,
+                        'odometer_unit'          => $row['odometer_unit'] ?: null,
+                        'fuel_type'              => $row['fuel_type'] ?: null,
+                        'model_year'             => $row['model_year'] ?: null,
+                        'color'                  => $row['color'] ?: null,
+                        'seats'                  => $row['seats'] ?: null,
+                        'doors'                  => $row['doors'] ?: null,
+                        'acquisition_date'       => $this->parseOdooDate($row['acquisition_date']),
+                        'car_value'              => $row['car_value'] ?: null,
+                        'active'                 => (bool) ($row['active'] ?? true),
+                        'synced_at'              => now(),
+                    ]
+                );
+                $count++;
+            }
+
+            $rows = $this->odoo->searchRead(
+                'fleet.vehicle.log.services', [],
+                ['id', 'vehicle_id', 'description', 'service_type_id', 'date', 'amount', 'vendor_id', 'state'],
+                1000, 0, 'id desc'
+            );
+            foreach ($rows as $row) {
+                FleetServiceLog::updateOrCreate(
+                    ['odoo_id' => $row['id']],
+                    [
+                        'odoo_vehicle_id'   => OdooService::many2oneId($row['vehicle_id']) ?? 0,
+                        'vehicle_name'      => OdooService::many2oneName($row['vehicle_id']),
+                        'description'       => $row['description'] ?: null,
+                        'service_type_name' => OdooService::many2oneName($row['service_type_id']),
+                        'date'              => $this->parseOdooDate($row['date']),
+                        'amount'            => $row['amount'] ?: null,
+                        'vendor_name'       => OdooService::many2oneName($row['vendor_id']),
+                        'state'             => $row['state'] ?: null,
+                        'synced_at'         => now(),
+                    ]
+                );
+                $count++;
+            }
+
+            return $count;
+        });
     }
 
     /** CRM stages + leads/opportunities + customers in one logical unit. */

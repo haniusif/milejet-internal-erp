@@ -38,6 +38,10 @@ class AppServiceProvider extends ServiceProvider
             'recruitment.write' => ['admin', 'hr_manager', 'recruitment_manager', 'recruitment_officer'],
             'crm.view'          => ['admin', 'crm_manager', 'crm_user'],
             'crm.write'         => ['admin', 'crm_manager', 'crm_user'],
+            'fleet.view'        => ['admin', 'fleet_manager', 'fleet_officer', 'hr_manager'],
+            'fleet.write'       => ['admin', 'fleet_manager', 'fleet_officer'],
+            'finance.view'      => ['admin', 'finance_manager', 'finance_officer'],
+            'finance.write'     => ['admin', 'finance_manager'],
         ];
 
         foreach ($gateMap as $ability => $allowedRoles) {

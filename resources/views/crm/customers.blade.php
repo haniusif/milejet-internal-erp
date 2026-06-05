@@ -20,7 +20,6 @@
     @endcan
 </div>
 
-@include('crm._subnav')
 
 <form method="GET" class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3 mb-5 flex flex-wrap items-center gap-2">
     <div class="relative flex-1 min-w-[180px]">

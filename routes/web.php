@@ -7,6 +7,8 @@ use App\Http\Controllers\CrmController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DepartmentController;
 use App\Http\Controllers\EmployeeController;
+use App\Http\Controllers\FinanceController;
+use App\Http\Controllers\FleetController;
 use App\Http\Controllers\LeaveController;
 use App\Http\Controllers\PayslipController;
 use App\Http\Controllers\PreferencesController;
@@ -129,6 +131,28 @@ Route::middleware('auth')->group(function () {
             Route::get('/customers/create',    'createCustomer')->name('customers.create');
             Route::post('/customers',          'storeCustomer')->name('customers.store');
         });
+    });
+
+    Route::prefix('fleet')->name('fleet.')->controller(FleetController::class)
+        ->middleware('can:fleet.view')->group(function () {
+        Route::get('/', 'index')->name('index');
+        Route::get('/services', 'services')->name('services');
+        Route::middleware('can:fleet.write')->group(function () {
+            Route::get('/vehicles/create',        'create')->name('vehicles.create');
+            Route::post('/vehicles',              'store')->name('vehicles.store');
+            Route::post('/vehicles/{id}/state',   'updateState')->whereNumber('id')->name('vehicles.state');
+            Route::post('/vehicles/{id}/odometer', 'updateOdometer')->whereNumber('id')->name('vehicles.odometer');
+            Route::post('/vehicles/{id}/driver',  'assignDriver')->whereNumber('id')->name('vehicles.driver');
+            Route::post('/vehicles/{id}/services', 'addService')->whereNumber('id')->name('vehicles.services.store');
+        });
+        Route::get('/vehicles/{id}', 'show')->whereNumber('id')->name('vehicles.show');
+    });
+
+    Route::prefix('finance')->name('finance.')->controller(FinanceController::class)
+        ->middleware('can:finance.view')->group(function () {
+        Route::get('/', 'index')->name('invoices');
+        Route::get('/bills', 'bills')->name('bills');
+        Route::get('/{id}', 'show')->whereNumber('id')->name('show');
     });
 
     Route::prefix('contracts')->name('contracts.')->controller(ContractController::class)->group(function () {

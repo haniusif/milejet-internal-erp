@@ -2,13 +2,29 @@
     $locale = app()->getLocale();
     $dir    = $locale === 'ar' ? 'rtl' : 'ltr';
     $theme  = session('theme', 'light');
+
+    // Which module is this page part of? Route name wins (module pages are
+    // domain-agnostic); the host decides for neutral routes such as /login.
+    $host   = request()->getHost();
+    $module = match (true) {
+        request()->routeIs('crm.*')     => 'crm',
+        request()->routeIs('fleet.*')   => 'fleet',
+        request()->routeIs('finance.*') => 'finance',
+        request()->routeIs('dashboard', 'employees.*', 'departments.*', 'work-locations.*',
+                           'leaves.*', 'attendances.*', 'recruitment.*', 'contracts.*', 'payslips.*') => 'hr',
+        $host === config('domains.crm')     => 'crm',
+        $host === config('domains.fleet')   => 'fleet',
+        $host === config('domains.finance') => 'finance',
+        default                             => 'hr',
+    };
+    $moduleTitle = __("title.{$module}"); // same keys the login page brands with
 @endphp
 <!DOCTYPE html>
 <html lang="{{ $locale }}" dir="{{ $dir }}" class="{{ $theme === 'dark' ? 'dark' : '' }}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>@yield('title', __('HR System'))</title>
+    <title>@yield('title', $moduleTitle)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
@@ -59,38 +75,55 @@
 @sectionMissing('chromeless')
 @php
     $icons = [
-        'dashboard'     => '<path d="M3 13h8V3H3v10Zm0 8h8v-6H3v6Zm10 0h8V11h-8v10Zm0-18v6h8V3h-8Z"/>',
-        'employees.*'   => '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>',
-        'departments.*' => '<path d="M3 21h18M5 21V7l8-4v18M19 21V11l-6-4"/><path d="M9 9v.01M9 12v.01M9 15v.01M9 18v.01"/>',
-        'work-locations.*' => '<path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/>',
-        'leaves.*'      => '<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>',
-        'attendances.*' => '<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>',
-        'recruitment.*' => '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/><path d="M11 8v6M8 11h6"/>',
-        'contracts.*'   => '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/>',
-        'payslips.*'    => '<rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/>',
+        'dashboard'        => '<path d="M3 13h8V3H3v10Zm0 8h8v-6H3v6Zm10 0h8V11h-8v10Zm0-18v6h8V3h-8Z"/>',
+        'employees.index'  => '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>',
+        'departments.index' => '<path d="M3 21h18M5 21V7l8-4v18M19 21V11l-6-4"/><path d="M9 9v.01M9 12v.01M9 15v.01M9 18v.01"/>',
+        'work-locations.index' => '<path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/>',
+        'leaves.index'     => '<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>',
+        'attendances.index' => '<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>',
+        'recruitment.jobs' => '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/><path d="M11 8v6M8 11h6"/>',
+        'contracts.index'  => '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/>',
+        'payslips.index'   => '<rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/>',
+        'crm.index'        => '<polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>',
+        'crm.customers'    => '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>',
+        'fleet.index'      => '<path d="M5 17h-2v-6l2-5h9l4 5h3a2 2 0 0 1 2 2v4h-2"/><circle cx="7" cy="17" r="2"/><circle cx="17" cy="17" r="2"/><path d="M9 17h6"/>',
+        'fleet.services'   => '<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>',
+        'finance.invoices' => '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8M16 17H8M10 9H8"/>',
+        'finance.bills'    => '<rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/>',
     ];
-    $nav = [
-        'dashboard'     => [__('Dashboard'),   null],
-        'employees.*'   => [__('Employees'),   null],
-        'departments.*' => [__('Departments'), null],
-        'work-locations.*' => [__('Offices'), null],
-        'leaves.*'      => [__('Leaves'),      null],
-        'attendances.*' => [__('Attendance'),  null],
-        'recruitment.*' => [__('Recruitment'), 'recruitment.view'],
-        'contracts.*'   => [__('Contracts'),   'contracts.view'],
-        'payslips.*'    => [__('Payslips'),    'payslips.view'],
+    // Per-module nav: [route, label, gate, active-route patterns]
+    $navByModule = [
+        'hr' => [
+            ['dashboard',            __('Dashboard'),   null,               ['dashboard']],
+            ['employees.index',      __('Employees'),   null,               ['employees.*']],
+            ['departments.index',    __('Departments'), null,               ['departments.*']],
+            ['work-locations.index', __('Offices'),     null,               ['work-locations.*']],
+            ['leaves.index',         __('Leaves'),      null,               ['leaves.*']],
+            ['attendances.index',    __('Attendance'),  null,               ['attendances.*']],
+            ['recruitment.jobs',     __('Recruitment'), 'recruitment.view', ['recruitment.*']],
+            ['contracts.index',      __('Contracts'),   'contracts.view',   ['contracts.*']],
+            ['payslips.index',       __('Payslips'),    'payslips.view',    ['payslips.*']],
+        ],
+        'crm' => [
+            ['crm.index',     __('Pipeline'),  null, ['crm.index', 'crm.leads.*']],
+            ['crm.customers', __('Customers'), null, ['crm.customers*']],
+        ],
+        'fleet' => [
+            ['fleet.index',    __('Vehicles'), null, ['fleet.index', 'fleet.vehicles.*']],
+            ['fleet.services', __('Services'), null, ['fleet.services']],
+        ],
+        'finance' => [
+            ['finance.invoices', __('Invoices'), null, ['finance.invoices', 'finance.show']],
+            ['finance.bills',    __('Bills'),    null, ['finance.bills']],
+        ],
     ];
-    $routes = [
-        'dashboard'     => 'dashboard',
-        'employees.*'   => 'employees.index',
-        'departments.*' => 'departments.index',
-        'work-locations.*' => 'work-locations.index',
-        'leaves.*'      => 'leaves.index',
-        'attendances.*' => 'attendances.index',
-        'recruitment.*' => 'recruitment.jobs',
-        'contracts.*'   => 'contracts.index',
-        'payslips.*'    => 'payslips.index',
-    ];
+    $nav = $navByModule[$module];
+    $moduleHome = [
+        'hr'      => 'dashboard',
+        'crm'     => 'crm.index',
+        'fleet'   => 'fleet.index',
+        'finance' => 'finance.invoices',
+    ][$module];
     $user = Auth::user();
     $rolesPretty = [
         'admin'           => [__('Role: System Admin'),     'bg-rose-50 text-rose-700 ring-rose-200 dark:bg-rose-900/40 dark:text-rose-300 dark:ring-rose-800'],
@@ -103,6 +136,10 @@
         'recruitment_officer' => [__('Role: Recruitment Officer'), 'bg-cyan-50 text-cyan-700 ring-cyan-200 dark:bg-cyan-900/40 dark:text-cyan-300 dark:ring-cyan-800'],
         'crm_manager'         => [__('Role: Sales Manager'),       'bg-violet-50 text-violet-700 ring-violet-200 dark:bg-violet-900/40 dark:text-violet-300 dark:ring-violet-800'],
         'crm_user'            => [__('Role: Salesperson'),         'bg-fuchsia-50 text-fuchsia-700 ring-fuchsia-200 dark:bg-fuchsia-900/40 dark:text-fuchsia-300 dark:ring-fuchsia-800'],
+        'fleet_manager'       => [__('Role: Fleet Manager'),       'bg-lime-50 text-lime-700 ring-lime-200 dark:bg-lime-900/40 dark:text-lime-300 dark:ring-lime-800'],
+        'fleet_officer'       => [__('Role: Fleet Officer'),       'bg-green-50 text-green-700 ring-green-200 dark:bg-green-900/40 dark:text-green-300 dark:ring-green-800'],
+        'finance_manager'     => [__('Role: Finance Manager'),     'bg-amber-50 text-amber-700 ring-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:ring-amber-800'],
+        'finance_officer'     => [__('Role: Accountant'),          'bg-orange-50 text-orange-700 ring-orange-200 dark:bg-orange-900/40 dark:text-orange-300 dark:ring-orange-800'],
         'employee'        => [__('Role: Employee'),         'bg-slate-100 text-slate-600 ring-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:ring-slate-700'],
     ];
     $otherLocale = $locale === 'ar' ? 'en' : 'ar';
@@ -113,25 +150,25 @@
     <div class="max-w-7xl mx-auto px-4">
         <div class="flex items-center justify-between h-16">
             <div class="flex items-center gap-2">
-                <a href="{{ route('dashboard') }}" class="flex items-center {{ $dir === 'rtl' ? 'ml-4' : 'mr-4' }}">
+                <a href="{{ route($moduleHome) }}" class="flex items-center {{ $dir === 'rtl' ? 'ml-4' : 'mr-4' }}">
                     {{-- white chip keeps the navy logo visible on the dark-mode header --}}
                     <span class="inline-flex items-center rounded-lg dark:bg-white px-1.5 py-1">
                         <img src="{{ asset('img/milejet-logo.png') }}" alt="MileJet" class="h-8 w-auto">
                     </span>
                 </a>
                 <nav class="hidden md:flex items-center gap-0.5">
-                    @foreach ($nav as $pattern => [$label, $gate])
-                        @continue($pattern === 'dashboard') {{-- the logo links to the dashboard --}}
+                    @foreach ($nav as [$rname, $label, $gate, $patterns])
+                        @continue($module === 'hr' && $rname === 'dashboard') {{-- the logo links to the dashboard --}}
                         @if (!$gate || $user->can($gate))
-                            @php $active = request()->routeIs($pattern); @endphp
-                            <a href="{{ route($routes[$pattern]) }}" title="{{ $label }}"
+                            @php $active = request()->routeIs(...$patterns); @endphp
+                            <a href="{{ route($rname) }}" title="{{ $label }}"
                                class="inline-flex items-center gap-2 px-2.5 h-9 rounded-md text-sm whitespace-nowrap transition
                                       {{ $active
                                         ? 'bg-brand-50 text-brand-700 font-semibold dark:bg-brand-900/40 dark:text-brand-300'
                                         : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100' }}">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                                      stroke-linecap="round" stroke-linejoin="round" class="ico-sm">
-                                    {!! $icons[$pattern] ?? '' !!}
+                                    {!! $icons[$rname] ?? '' !!}
                                 </svg>
                                 <span class="hidden xl:inline">{{ $label }}</span>
                             </a>
@@ -244,23 +281,25 @@
             </div>
         </div>
 
+        @if ($nav)
         <nav class="flex md:hidden gap-1 pb-3 overflow-x-auto">
-            @foreach ($nav as $pattern => [$label, $gate])
+            @foreach ($nav as [$rname, $label, $gate, $patterns])
                 @if (!$gate || $user->can($gate))
-                    @php $active = request()->routeIs($pattern); @endphp
-                    <a href="{{ route($routes[$pattern]) }}"
+                    @php $active = request()->routeIs(...$patterns); @endphp
+                    <a href="{{ route($rname) }}"
                        class="inline-flex items-center gap-1.5 shrink-0 px-2.5 h-8 rounded-md text-xs
                               {{ $active
                                 ? 'bg-brand-50 text-brand-700 font-semibold dark:bg-brand-900/40 dark:text-brand-300'
                                 : 'text-slate-600 bg-slate-100 dark:text-slate-300 dark:bg-slate-800' }}">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ico-sm">
-                            {!! $icons[$pattern] ?? '' !!}
+                            {!! $icons[$rname] ?? '' !!}
                         </svg>
                         {{ $label }}
                     </a>
                 @endif
             @endforeach
         </nav>
+        @endif
     </div>
 </header>
 @endif

@@ -3,11 +3,10 @@
 use Illuminate\Support\Facades\Route;
 
 /*
- * finance.milejet.space — Finance module (placeholder until built).
+ * finance.milejet.space — root lands on the Finance module (paths live under
+ * /finance in web.php, domain-agnostic, so the module also works via portal.*).
  */
 Route::domain(config('domains.finance'))
-    ->middleware('auth')
-    ->name('finance.')
     ->group(function () {
-        Route::view('/', 'finance.home')->name('home');
+        Route::redirect('/', '/finance')->name('finance.home');
     });

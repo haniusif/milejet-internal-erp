@@ -45,6 +45,8 @@ class DashboardController extends Controller
                 'payslips'    => $sync->syncPayslips(),
                 'recruitment' => $sync->syncRecruitment(),
                 'crm'         => $sync->syncCrm(),
+                'fleet'       => $sync->syncFleet(),
+                'finance'     => $sync->syncFinance(),
                 default       => $sync->syncAll(),
             };
         } catch (\Throwable $e) {

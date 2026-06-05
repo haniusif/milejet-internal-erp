@@ -46,6 +46,20 @@ class OdooRoleMapper
             'Sales / User: All Documents',
             'Sales / User: Own Documents Only',
         ],
+        'fleet_manager' => [
+            'Fleet / Administrator',
+        ],
+        'fleet_officer' => [
+            'Fleet / Officer: Manage all vehicles',
+        ],
+        'finance_manager' => [
+            'Invoicing / Billing Administrator',
+            'Accounting / Administrator',
+        ],
+        'finance_officer' => [
+            'Invoicing / Billing',
+            'Accounting / Accountant',
+        ],
         'employee' => [
             'User types / Internal User',
         ],
@@ -104,6 +118,16 @@ class OdooRoleMapper
         // crm_manager implies crm_user
         if (in_array('crm_manager', $roles, true) && !in_array('crm_user', $roles, true)) {
             $roles[] = 'crm_user';
+        }
+
+        // fleet_manager implies fleet_officer
+        if (in_array('fleet_manager', $roles, true) && !in_array('fleet_officer', $roles, true)) {
+            $roles[] = 'fleet_officer';
+        }
+
+        // finance_manager implies finance_officer
+        if (in_array('finance_manager', $roles, true) && !in_array('finance_officer', $roles, true)) {
+            $roles[] = 'finance_officer';
         }
 
         // Every authenticated user is at least "employee"

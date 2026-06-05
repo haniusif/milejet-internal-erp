@@ -27,6 +27,12 @@
         @endif
     </div>
 
+    {{-- Module launcher — same app-switcher cards as the portal hub --}}
+    <div class="mb-6">
+        <h2 class="text-sm font-semibold text-slate-900 dark:text-slate-100 mb-3">{{ __('Applications') }}</h2>
+        @include('partials.module-cards')
+    </div>
+
     {{-- Stats grid --}}
     @php
         $cards = [
