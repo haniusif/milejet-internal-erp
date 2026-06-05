@@ -9,6 +9,15 @@
             {{ __('Employees') }} <span class="text-slate-400 font-medium">({{ $employees->total() }})</span>
         </h1>
     </div>
+    <div class="flex items-center gap-2">
+    <a href="{{ route('employees.org-chart') }}"
+       class="inline-flex items-center gap-2 h-9 px-4 rounded-md bg-slate-100 text-slate-700 text-sm font-medium hover:bg-slate-200 transition">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ico-sm">
+            <rect x="9" y="2" width="6" height="5" rx="1"/><rect x="2" y="17" width="6" height="5" rx="1"/><rect x="16" y="17" width="6" height="5" rx="1"/>
+            <path d="M12 7v4M5 17v-3h14v3M12 11v3"/>
+        </svg>
+        {{ __('Org Chart') }}
+    </a>
     @can('employees.write')
     <a href="{{ route('employees.create') }}"
        class="inline-flex items-center gap-2 h-9 px-4 rounded-md bg-brand-600 text-white text-sm font-medium hover:bg-brand-700 transition shadow-sm">
@@ -18,6 +27,7 @@
         {{ __('New employee') }}
     </a>
     @endcan
+    </div>
 </div>
 
 <form method="GET" class="bg-white border border-slate-200 rounded-xl p-3 mb-5 flex flex-wrap items-center gap-2">

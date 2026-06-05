@@ -65,6 +65,7 @@
         'work-locations.*' => '<path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/>',
         'leaves.*'      => '<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>',
         'attendances.*' => '<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>',
+        'recruitment.*' => '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/><path d="M11 8v6M8 11h6"/>',
         'contracts.*'   => '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/>',
         'payslips.*'    => '<rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/>',
     ];
@@ -75,6 +76,7 @@
         'work-locations.*' => [__('Offices'), null],
         'leaves.*'      => [__('Leaves'),      null],
         'attendances.*' => [__('Attendance'),  null],
+        'recruitment.*' => [__('Recruitment'), 'recruitment.view'],
         'contracts.*'   => [__('Contracts'),   'contracts.view'],
         'payslips.*'    => [__('Payslips'),    'payslips.view'],
     ];
@@ -85,6 +87,7 @@
         'work-locations.*' => 'work-locations.index',
         'leaves.*'      => 'leaves.index',
         'attendances.*' => 'attendances.index',
+        'recruitment.*' => 'recruitment.jobs',
         'contracts.*'   => 'contracts.index',
         'payslips.*'    => 'payslips.index',
     ];
@@ -96,6 +99,8 @@
         'payroll_manager' => [__('Role: Payroll Manager'),  'bg-emerald-50 text-emerald-700 ring-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:ring-emerald-800'],
         'payroll_officer' => [__('Role: Payroll Officer'),  'bg-teal-50 text-teal-700 ring-teal-200 dark:bg-teal-900/40 dark:text-teal-300 dark:ring-teal-800'],
         'leave_manager'   => [__('Role: Leave Manager'),    'bg-amber-50 text-amber-700 ring-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:ring-amber-800'],
+        'recruitment_manager' => [__('Role: Recruitment Manager'), 'bg-sky-50 text-sky-700 ring-sky-200 dark:bg-sky-900/40 dark:text-sky-300 dark:ring-sky-800'],
+        'recruitment_officer' => [__('Role: Recruitment Officer'), 'bg-cyan-50 text-cyan-700 ring-cyan-200 dark:bg-cyan-900/40 dark:text-cyan-300 dark:ring-cyan-800'],
         'employee'        => [__('Role: Employee'),         'bg-slate-100 text-slate-600 ring-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:ring-slate-700'],
     ];
     $otherLocale = $locale === 'ar' ? 'en' : 'ar';
@@ -114,6 +119,7 @@
                 </a>
                 <nav class="hidden md:flex items-center gap-0.5">
                     @foreach ($nav as $pattern => [$label, $gate])
+                        @continue($pattern === 'dashboard') {{-- the logo links to the dashboard --}}
                         @if (!$gate || $user->can($gate))
                             @php $active = request()->routeIs($pattern); @endphp
                             <a href="{{ route($routes[$pattern]) }}" title="{{ $label }}"

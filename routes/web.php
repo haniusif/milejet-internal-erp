@@ -9,6 +9,7 @@ use App\Http\Controllers\EmployeeController;
 use App\Http\Controllers\LeaveController;
 use App\Http\Controllers\PayslipController;
 use App\Http\Controllers\PreferencesController;
+use App\Http\Controllers\RecruitmentController;
 use App\Http\Controllers\WorkLocationController;
 use Illuminate\Support\Facades\Route;
 
@@ -43,6 +44,7 @@ Route::middleware('auth')->group(function () {
 
     Route::prefix('employees')->name('employees.')->controller(EmployeeController::class)->group(function () {
         Route::get('/',     'index')->name('index'); // any authenticated user can browse
+        Route::get('/org-chart', 'orgChart')->name('org-chart');
         Route::middleware('can:employees.write')->group(function () {
             Route::get('/create',    'create')->name('create');
             Route::post('/',         'store')->name('store');
@@ -97,6 +99,19 @@ Route::middleware('auth')->group(function () {
         Route::post('/{id}/check-out', 'checkOut')->whereNumber('id')->name('check-out');
         Route::delete('/{id}', 'destroy')->whereNumber('id')->name('destroy')
             ->middleware('role:admin,hr_manager');
+    });
+
+    Route::prefix('recruitment')->name('recruitment.')->controller(RecruitmentController::class)
+        ->middleware('can:recruitment.view')->group(function () {
+        Route::get('/', 'jobs')->name('jobs');
+        Route::get('/applicants', 'applicants')->name('applicants');
+        Route::middleware('can:recruitment.write')->group(function () {
+            Route::get('/applicants/create',       'createApplicant')->name('applicants.create');
+            Route::post('/applicants',             'storeApplicant')->name('applicants.store');
+            Route::post('/applicants/{id}/stage',  'moveStage')->whereNumber('id')->name('applicants.stage');
+            Route::post('/applicants/{id}/refuse', 'refuse')->whereNumber('id')->name('applicants.refuse');
+            Route::post('/applicants/{id}/restore', 'restore')->whereNumber('id')->name('applicants.restore');
+        });
     });
 
     Route::prefix('contracts')->name('contracts.')->controller(ContractController::class)->group(function () {

@@ -2,14 +2,17 @@
 
 namespace App\Services;
 
+use App\Models\Applicant;
 use App\Models\Attendance;
 use App\Models\Contract;
 use App\Models\Department;
 use App\Models\Employee;
+use App\Models\JobPosition;
 use App\Models\Leave;
 use App\Models\LeaveType;
 use App\Models\Payslip;
 use App\Models\PayslipLine;
+use App\Models\RecruitmentStage;
 use App\Models\SyncLog;
 use App\Models\WorkLocation;
 use Carbon\Carbon;
@@ -33,7 +36,97 @@ class SyncService
             'attendances' => $this->syncAttendances(),
             'contracts'   => $this->syncContracts(),
             'payslips'    => $this->syncPayslips(),
+            'recruitment' => $this->syncRecruitment(),
         ];
+    }
+
+    /** Jobs + stages + applicants in one logical unit. */
+    public function syncRecruitment(): SyncLog
+    {
+        return $this->runSync('hr.recruitment', function () {
+            $count = 0;
+
+            // Stages
+            $rows = $this->odoo->searchRead(
+                'hr.recruitment.stage', [],
+                ['id', 'name', 'sequence', 'hired_stage', 'fold'],
+                0, 0, 'sequence asc'
+            );
+            foreach ($rows as $row) {
+                RecruitmentStage::updateOrCreate(
+                    ['odoo_id' => $row['id']],
+                    [
+                        'name'        => $row['name'],
+                        'sequence'    => $row['sequence'] ?? 0,
+                        'hired_stage' => (bool) ($row['hired_stage'] ?? false),
+                        'fold'        => (bool) ($row['fold'] ?? false),
+                        'synced_at'   => now(),
+                    ]
+                );
+                $count++;
+            }
+
+            // Job positions (including archived, so closed roles keep history)
+            $rows = $this->odoo->searchRead(
+                'hr.job', [['active', 'in', [true, false]]],
+                ['id', 'name', 'department_id', 'no_of_recruitment', 'application_count', 'user_id', 'active'],
+                0, 0, 'id asc'
+            );
+            foreach ($rows as $row) {
+                JobPosition::updateOrCreate(
+                    ['odoo_id' => $row['id']],
+                    [
+                        'name'               => $row['name'],
+                        'odoo_department_id' => OdooService::many2oneId($row['department_id']),
+                        'department_name'    => OdooService::many2oneName($row['department_id']),
+                        'no_of_recruitment'  => $row['no_of_recruitment'] ?? 0,
+                        'application_count'  => $row['application_count'] ?? 0,
+                        'recruiter_name'     => OdooService::many2oneName($row['user_id']),
+                        'active'             => (bool) ($row['active'] ?? true),
+                        'synced_at'          => now(),
+                    ]
+                );
+                $count++;
+            }
+
+            // Applicants (archived = refused; kept for history). Last 1000.
+            $rows = $this->odoo->searchRead(
+                'hr.applicant', [['active', 'in', [true, false]]],
+                ['id', 'partner_name', 'email_from', 'partner_phone', 'partner_mobile',
+                 'job_id', 'stage_id', 'department_id', 'salary_expected', 'salary_proposed',
+                 'availability', 'priority', 'kanban_state', 'refuse_reason_id', 'active', 'create_date'],
+                1000, 0, 'id desc'
+            );
+            foreach ($rows as $row) {
+                Applicant::updateOrCreate(
+                    ['odoo_id' => $row['id']],
+                    [
+                        'partner_name'       => $row['partner_name'] ?: '—',
+                        'email_from'         => $row['email_from'] ?: null,
+                        'partner_phone'      => $row['partner_phone'] ?: null,
+                        'partner_mobile'     => $row['partner_mobile'] ?: null,
+                        'odoo_job_id'        => OdooService::many2oneId($row['job_id']),
+                        'job_name'           => OdooService::many2oneName($row['job_id']),
+                        'odoo_stage_id'      => OdooService::many2oneId($row['stage_id']),
+                        'stage_name'         => OdooService::many2oneName($row['stage_id']),
+                        'odoo_department_id' => OdooService::many2oneId($row['department_id']),
+                        'department_name'    => OdooService::many2oneName($row['department_id']),
+                        'salary_expected'    => $row['salary_expected'] ?: null,
+                        'salary_proposed'    => $row['salary_proposed'] ?: null,
+                        'availability'       => $this->parseOdooDate($row['availability']),
+                        'priority'           => $row['priority'] ?: null,
+                        'kanban_state'       => $row['kanban_state'] ?: null,
+                        'refuse_reason'      => OdooService::many2oneName($row['refuse_reason_id']),
+                        'active'             => (bool) ($row['active'] ?? true),
+                        'odoo_create_date'   => $this->parseOdooDate($row['create_date']),
+                        'synced_at'          => now(),
+                    ]
+                );
+                $count++;
+            }
+
+            return $count;
+        });
     }
 
     public function syncContracts(): SyncLog

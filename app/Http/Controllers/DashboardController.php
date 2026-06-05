@@ -43,6 +43,7 @@ class DashboardController extends Controller
                 'leave_types' => $sync->syncLeaveTypes(),
                 'contracts'   => $sync->syncContracts(),
                 'payslips'    => $sync->syncPayslips(),
+                'recruitment' => $sync->syncRecruitment(),
                 default       => $sync->syncAll(),
             };
         } catch (\Throwable $e) {

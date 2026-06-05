@@ -33,6 +33,12 @@ class OdooRoleMapper
             'Time Off / Administrator',
             'Time Off / Officer: Manage all requests',
         ],
+        'recruitment_manager' => [
+            'Recruitment / Administrator',
+        ],
+        'recruitment_officer' => [
+            'Recruitment / Officer: Manage all applicants',
+        ],
         'employee' => [
             'User types / Internal User',
         ],
@@ -81,6 +87,11 @@ class OdooRoleMapper
         // payroll_manager implies payroll_officer
         if (in_array('payroll_manager', $roles, true) && !in_array('payroll_officer', $roles, true)) {
             $roles[] = 'payroll_officer';
+        }
+
+        // recruitment_manager implies recruitment_officer
+        if (in_array('recruitment_manager', $roles, true) && !in_array('recruitment_officer', $roles, true)) {
+            $roles[] = 'recruitment_officer';
         }
 
         // Every authenticated user is at least "employee"

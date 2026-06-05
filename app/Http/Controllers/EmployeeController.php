@@ -46,6 +46,23 @@ class EmployeeController extends Controller
         return view('employees.index', compact('employees', 'departments'));
     }
 
+    public function orgChart()
+    {
+        $employees = Employee::where('active', true)
+            ->orderBy('name')
+            ->get(['id', 'odoo_id', 'emp_code', 'name', 'job_title', 'department_name', 'odoo_parent_id', 'image_small']);
+
+        $byParent = $employees->groupBy('odoo_parent_id');
+        $activeIds = $employees->pluck('odoo_id')->flip();
+
+        // Roots: no manager, or manager not among active employees
+        $roots = $employees->filter(
+            fn ($e) => !$e->odoo_parent_id || !isset($activeIds[$e->odoo_parent_id])
+        )->values();
+
+        return view('employees.org_chart', compact('roots', 'byParent'));
+    }
+
     public function create()
     {
         $departments = Department::orderBy('name')->get();
@@ -127,8 +144,22 @@ class EmployeeController extends Controller
         $recentPayslips = Payslip::where('odoo_employee_id', $employee->odoo_id)
             ->orderByDesc('date_from')->limit(5)->get();
 
+        // Org context
+        $manager = $employee->odoo_parent_id
+            ? Employee::where('odoo_id', $employee->odoo_parent_id)->first()
+            : null;
+        $reports = $employee->subordinates()->where('active', true)->orderBy('name')->get();
+
+        // Compensation, IDs and other private data: HR/payroll roles, or the
+        // employee viewing their own profile (matched by work email).
+        $user = auth()->user();
+        $isSelf = $employee->work_email
+            && strcasecmp($employee->work_email, $user->email) === 0;
+        $canViewSensitive = $isSelf || $user->can('employees.view_sensitive');
+
         return view('employees.show', compact(
-            'employee', 'extra', 'contract', 'recentLeaves', 'recentAttendances', 'recentPayslips'
+            'employee', 'extra', 'contract', 'recentLeaves', 'recentAttendances',
+            'recentPayslips', 'manager', 'reports', 'canViewSensitive'
         ));
     }
 

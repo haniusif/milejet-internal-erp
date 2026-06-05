@@ -27,11 +27,15 @@ class AppServiceProvider extends ServiceProvider
             'work_locations.delete' => ['admin', 'hr_manager'],
             'leaves.approve'    => ['admin', 'leave_manager', 'hr_manager'],
             'leaves.delete'     => ['admin', 'hr_manager', 'leave_manager'],
+            // Compensation, IDs and other private profile data
+            'employees.view_sensitive' => ['admin', 'hr_manager', 'hr_officer', 'payroll_manager', 'payroll_officer'],
             'contracts.view'    => ['admin', 'hr_manager', 'hr_officer', 'payroll_manager', 'payroll_officer'],
             'payslips.view'     => ['admin', 'payroll_manager', 'payroll_officer', 'hr_manager'],
             'payslips.create'   => ['admin', 'payroll_manager', 'payroll_officer'],
             'payslips.delete'   => ['admin', 'payroll_manager'],
             'sync.run'          => ['admin', 'hr_manager', 'payroll_manager'],
+            'recruitment.view'  => ['admin', 'hr_manager', 'hr_officer', 'recruitment_manager', 'recruitment_officer'],
+            'recruitment.write' => ['admin', 'hr_manager', 'recruitment_manager', 'recruitment_officer'],
         ];
 
         foreach ($gateMap as $ability => $allowedRoles) {
