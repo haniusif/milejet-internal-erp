@@ -100,6 +100,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     "/fleet": [
       { href: "/fleet", label: t("nav.vehicles"), exact: true },
       { href: "/fleet/services", label: t("nav.services") },
+      { href: "/fleet/inspections", label: t("fleet.inspections") },
+      { href: "/fleet/usage", label: t("fleet.usage") },
       { href: "/fleet/help", label: t("fleet.help") },
     ],
     "/finance": [

@@ -96,6 +96,74 @@ class FleetController extends Controller
         ]);
     }
 
+    /** All inspections across the fleet (page), with filters. */
+    public function inspections(Request $request): JsonResponse
+    {
+        $localVehicleId = FleetVehicle::pluck('id', 'odoo_id');
+
+        $query = FleetInspection::query();
+        if ($search = trim((string) $request->get('q', ''))) {
+            $query->where(fn ($q) => $q->where('vehicle_name', 'like', "%{$search}%")->orWhere('name', 'like', "%{$search}%"));
+        }
+        if ($state = $request->get('state')) {
+            $query->where('state', $state);
+        }
+
+        $page = $query->withCount('lines')->orderByDesc('date_inspected')
+            ->paginate(min((int) $request->get('per_page', 25), 100))
+            ->withQueryString()->through(fn ($i) => [
+                'id'             => $i->id,
+                'name'           => $i->name,
+                'vehicle_id'     => $localVehicleId[$i->odoo_vehicle_id] ?? null,
+                'vehicle_name'   => $i->vehicle_name,
+                'direction'      => $i->direction,
+                'state'          => $i->state,
+                'result'         => $i->result,
+                'date_inspected' => $i->date_inspected?->toDateTimeString(),
+                'lines_count'    => $i->lines_count,
+            ]);
+
+        return response()->json($page->toArray() + [
+            'stats' => [
+                'total'     => FleetInspection::count(),
+                'draft'     => FleetInspection::where('state', 'draft')->count(),
+                'confirmed' => FleetInspection::where('state', 'confirmed')->count(),
+                'failed'    => FleetInspection::where('result', 'failure')->count(),
+            ],
+        ]);
+    }
+
+    /** All vehicle usage / checkout records across the fleet (page). */
+    public function usages(Request $request): JsonResponse
+    {
+        $localVehicleId = FleetVehicle::pluck('id', 'odoo_id');
+
+        $query = FleetVehicleUsage::query();
+        if ($search = trim((string) $request->get('q', ''))) {
+            $query->where(fn ($q) => $q->where('vehicle_name', 'like', "%{$search}%")
+                ->orWhere('partner_name', 'like', "%{$search}%")->orWhere('name', 'like', "%{$search}%"));
+        }
+        if ($state = $request->get('state')) {
+            $query->where('state', $state);
+        }
+
+        $page = $query->orderByDesc('date_picking')->orderByDesc('id')
+            ->paginate(min((int) $request->get('per_page', 25), 100))
+            ->withQueryString()->through(fn ($u) => $this->usageSummary($u) + [
+                'vehicle_id'   => $localVehicleId[$u->odoo_vehicle_id] ?? null,
+                'vehicle_name' => $u->vehicle_name,
+            ]);
+
+        return response()->json($page->toArray() + [
+            'stats' => [
+                'total'    => FleetVehicleUsage::count(),
+                'in_use'   => FleetVehicleUsage::where('state', 'in_use')->count(),
+                'reserved' => FleetVehicleUsage::where('state', 'reserved')->count(),
+                'returned' => FleetVehicleUsage::where('state', 'returned')->count(),
+            ],
+        ]);
+    }
+
     public function addInspection(Request $request, int $id): JsonResponse
     {
         $vehicle = FleetVehicle::findOrFail($id);

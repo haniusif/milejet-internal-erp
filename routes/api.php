@@ -210,6 +210,8 @@ Route::prefix('v1')->group(function () {
             Route::get('/vehicles',      'vehicles');
             Route::get('/vehicles/{id}', 'vehicle')->whereNumber('id');
             Route::get('/services',      'services');
+            Route::get('/inspections',   'inspections');
+            Route::get('/usages',        'usages');
             Route::get('/models',        'models');
             Route::get('/categories',    'categories');
             Route::get('/drivers',       'drivers');
