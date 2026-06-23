@@ -80,6 +80,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           ...(can("contracts.view") ? [{ href: "/hr/contracts", label: t("nav.contracts") }] : []),
           ...(can("payslips.view") ? [{ href: "/hr/payslips", label: t("nav.payslips") }] : []),
           ...(can("loans.view") ? [{ href: "/hr/loans", label: t("nav.loans") }] : []),
+          { href: "/hr/courier-daily", label: t("cd.nav") },
           // Departments / companies & branches / offices now live under Settings.
           { href: "/hr/settings", label: t("nav.settings") },
         ]

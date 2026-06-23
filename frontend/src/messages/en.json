@@ -560,5 +560,15 @@
   "hr.geofence_anywhere": "Anywhere",
   "hr.geofence_exempt": "Allow anywhere",
   "hr.geofence_restrict": "Restrict to office",
-  "hr.confirm_geofence_exempt": "Allow this employee to check in/out from anywhere (no location check)?"
+  "hr.confirm_geofence_exempt": "Allow this employee to check in/out from anywhere (no location check)?",
+  "cd.nav": "Courier perf.",
+  "cd.title": "Courier daily performance",
+  "cd.rows": "Records",
+  "cd.present": "Present days",
+  "cd.present_h": "Present",
+  "cd.ofd": "Out for delivery",
+  "cd.delivered": "Delivered",
+  "cd.perf": "Perf.",
+  "cd.all_months": "All months",
+  "cd.city": "City"
 }

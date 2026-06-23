@@ -6,6 +6,7 @@ use App\Models\Applicant;
 use App\Models\Attendance;
 use App\Models\Company;
 use App\Models\Contract;
+use App\Models\CourierDaily;
 use App\Models\Country;
 use App\Models\CrmCustomer;
 use App\Models\CrmLead;
@@ -516,6 +517,39 @@ class SyncService
                 $count++;
             }
 
+            return $count;
+        });
+    }
+
+    /** Courier daily performance (mj_courier_daily) — batched, can be large. */
+    public function syncCourierDaily(): SyncLog
+    {
+        return $this->runSync('mj.courier.daily', function () {
+            $count = 0; $offset = 0; $batch = 1000;
+            do {
+                $rows = $this->odoo->searchRead('mj.courier.daily', [],
+                    ['id', 'date', 'month', 'employee_id', 'courier_name', 'vehicle_plate',
+                     'city', 'project', 'present', 'ofd', 'delivered', 'performance'],
+                    $batch, $offset, 'id asc');
+                foreach ($rows as $row) {
+                    CourierDaily::updateOrCreate(['odoo_id' => $row['id']], [
+                        'date'             => $this->parseOdooDate($row['date']),
+                        'month'            => $row['month'] ?: null,
+                        'odoo_employee_id' => OdooService::many2oneId($row['employee_id']),
+                        'courier_name'     => $row['courier_name'] ?: null,
+                        'vehicle_plate'    => $row['vehicle_plate'] ?: null,
+                        'city'             => $row['city'] ?: null,
+                        'project'          => $row['project'] ?: null,
+                        'present'          => (bool) ($row['present'] ?? false),
+                        'ofd'              => $row['ofd'] ?? 0,
+                        'delivered'        => $row['delivered'] ?? 0,
+                        'performance'      => $row['performance'] ?? 0,
+                        'synced_at'        => now(),
+                    ]);
+                    $count++;
+                }
+                $offset += $batch;
+            } while (count($rows) === $batch);
             return $count;
         });
     }

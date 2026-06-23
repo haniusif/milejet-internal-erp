@@ -560,5 +560,15 @@
   "hr.geofence_anywhere": "من أي مكان",
   "hr.geofence_exempt": "السماح من أي مكان",
   "hr.geofence_restrict": "تقييد بالموقع",
-  "hr.confirm_geofence_exempt": "السماح لهذا الموظف بتسجيل الحضور والانصراف من أي مكان (بدون تحقق من الموقع)؟"
+  "hr.confirm_geofence_exempt": "السماح لهذا الموظف بتسجيل الحضور والانصراف من أي مكان (بدون تحقق من الموقع)؟",
+  "cd.nav": "أداء المندوبين",
+  "cd.title": "أداء المندوبين اليومي",
+  "cd.rows": "السجلات",
+  "cd.present": "أيام الحضور",
+  "cd.present_h": "حاضر",
+  "cd.ofd": "خارج للتوصيل",
+  "cd.delivered": "تم التوصيل",
+  "cd.perf": "الأداء",
+  "cd.all_months": "كل الأشهر",
+  "cd.city": "المدينة"
 }

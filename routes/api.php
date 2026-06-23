@@ -14,6 +14,7 @@ use App\Http\Controllers\Api\V1\HrFormsController as V1HrForms;
 use App\Http\Controllers\Api\V1\HrContractController as V1HrContract;
 use App\Http\Controllers\Api\V1\OcrController as V1Ocr;
 use App\Http\Controllers\Api\V1\UploadController as V1Upload;
+use App\Http\Controllers\Api\V1\CourierDailyController as V1CourierDaily;
 use App\Http\Controllers\Api\V1\RecruitmentController as V1Recruitment;
 use App\Http\Controllers\MobileApiController;
 use Illuminate\Support\Facades\Route;
@@ -39,6 +40,9 @@ Route::prefix('v1')->group(function () {
             Route::get('/employees/{id}', 'employee')->whereNumber('id');
             Route::get('/departments', 'departments')->middleware('can:hr.view_all');
             Route::get('/alerts', 'alerts')->middleware('can:hr.view_all');
+        });
+        Route::get('/hr/courier-daily', [V1CourierDaily::class, 'index'])->middleware('can:hr.view_all');
+        Route::prefix('hr')->controller(V1Hr::class)->group(function () {
             Route::get('/leaves',      'leaves');
             Route::get('/leaves/export', 'exportLeaves'); // scoped to own records inside the controller
             Route::post('/leaves',     'storeLeave');
