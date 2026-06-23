@@ -13,6 +13,7 @@ use App\Http\Controllers\Api\V1\HrDocumentsController as V1HrDocuments;
 use App\Http\Controllers\Api\V1\HrFormsController as V1HrForms;
 use App\Http\Controllers\Api\V1\HrContractController as V1HrContract;
 use App\Http\Controllers\Api\V1\OcrController as V1Ocr;
+use App\Http\Controllers\Api\V1\UploadController as V1Upload;
 use App\Http\Controllers\Api\V1\RecruitmentController as V1Recruitment;
 use App\Http\Controllers\MobileApiController;
 use Illuminate\Support\Facades\Route;
@@ -27,6 +28,9 @@ Route::prefix('v1')->group(function () {
     Route::middleware('auth:sanctum')->group(function () {
         Route::get('/auth/me',      [V1Auth::class, 'me']);
         Route::post('/auth/logout', [V1Auth::class, 'logout']);
+
+        // Temporary file upload → private storage/app/temp (authenticated).
+        Route::post('/uploadfile', [V1Upload::class, 'store']);
 
         Route::prefix('hr')->controller(V1Hr::class)->group(function () {
             Route::get('/dashboard',   'dashboard');

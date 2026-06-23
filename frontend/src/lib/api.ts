@@ -30,19 +30,21 @@ async function ensureCsrf(): Promise<void> {
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const headers: Record<string, string> = { Accept: "application/json" };
+  // FormData → let the browser set multipart Content-Type (with boundary).
+  const isForm = typeof FormData !== "undefined" && body instanceof FormData;
 
   if (method !== "GET") {
     await ensureCsrf();
     const token = readCookie("XSRF-TOKEN");
     if (token) headers["X-XSRF-TOKEN"] = token;
-    if (body !== undefined) headers["Content-Type"] = "application/json";
+    if (body !== undefined && !isForm) headers["Content-Type"] = "application/json";
   }
 
   const res = await fetch(`${BASE}/api/v1${path}`, {
     method,
     headers,
     credentials: "include",
-    body: body !== undefined ? JSON.stringify(body) : undefined,
+    body: body !== undefined ? (isForm ? (body as FormData) : JSON.stringify(body)) : undefined,
   });
 
   if (res.status === 204) return undefined as T;
