@@ -12,7 +12,9 @@ class FleetVehicle extends Model
 
     protected $casts = [
         'active'           => 'boolean',
+        'in_use'           => 'boolean',
         'acquisition_date' => 'date',
+        'fuel_capacity'    => 'decimal:2',
         'synced_at'        => 'datetime',
     ];
 
@@ -24,6 +26,16 @@ class FleetVehicle extends Model
     public function serviceLogs(): HasMany
     {
         return $this->hasMany(FleetServiceLog::class, 'odoo_vehicle_id', 'odoo_id');
+    }
+
+    public function inspections(): HasMany
+    {
+        return $this->hasMany(FleetInspection::class, 'odoo_vehicle_id', 'odoo_id');
+    }
+
+    public function usages(): HasMany
+    {
+        return $this->hasMany(FleetVehicleUsage::class, 'odoo_vehicle_id', 'odoo_id');
     }
 
     public function stateColor(): string

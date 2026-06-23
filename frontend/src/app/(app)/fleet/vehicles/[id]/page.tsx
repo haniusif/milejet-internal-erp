@@ -8,6 +8,8 @@ import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
 import { Badge, ErrorBox, money, PageHeader, Spinner, SuccessBox, Table, Td, Th } from "@/components/ui";
 import { Field, inputCls, Select, TextInput } from "@/components/form";
+import VehicleInspections from "@/components/fleet/VehicleInspections";
+import VehicleUsage from "@/components/fleet/VehicleUsage";
 
 export default function VehicleDetail() {
   const { t } = useI18n();
@@ -19,6 +21,7 @@ export default function VehicleDetail() {
   const [drivers, setDrivers] = useState<{ id: number; name: string }[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [subIds, setSubIds] = useState<number[]>([]);
 
   const writable = can("fleet.write");
 
@@ -66,10 +69,12 @@ export default function VehicleDetail() {
             {(
               [
                 [t("fleet.model"), vehicle.model_name],
+                [t("fleet.category"), vehicle.category_name],
                 [t("fleet.plate"), vehicle.license_plate],
                 [t("fleet.vin"), vehicle.vin_sn],
                 [t("fleet.year"), vehicle.model_year],
                 [t("fleet.fuel"), vehicle.fuel_type],
+                [t("fleet.fuel_capacity"), vehicle.fuel_capacity ? `${vehicle.fuel_capacity} L` : null],
                 [t("fleet.driver"), vehicle.driver_name],
                 [t("fleet.odometer"), `${Number(vehicle.odometer).toLocaleString()} ${vehicle.odometer_unit ?? "km"}`],
                 [t("fleet.acquired"), vehicle.acquisition_date],
@@ -158,35 +163,57 @@ export default function VehicleDetail() {
                     description: (fd.get("description") as string) || undefined,
                     amount: fd.get("amount") ? Number(fd.get("amount")) : undefined,
                     date: (fd.get("date") as string) || undefined,
+                    service_ids: subIds.length ? subIds : undefined,
                   },
                   t("common.created")
                 );
                 e.currentTarget.reset();
+                setSubIds([]);
               }}
-              className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 grid grid-cols-2 md:grid-cols-5 gap-3 items-end"
+              className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 space-y-3"
             >
-              <Field label={t("fleet.service_type")} required>
-                <select name="service_type_id" required className={inputCls}>
-                  <option value="">—</option>
-                  {vehicle.service_types.map((st) => (
-                    <option key={st.odoo_id} value={st.odoo_id}>
-                      {st.name}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <Field label={t("leave.reason")}>
-                <TextInput name="description" />
-              </Field>
-              <Field label={t("common.amount")}>
-                <TextInput name="amount" type="number" min="0" step="0.01" />
-              </Field>
-              <Field label={t("common.date")}>
-                <TextInput name="date" type="date" />
-              </Field>
-              <button className="h-9 px-4 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium">
-                + {t("fleet.add_service")}
-              </button>
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-3 items-end">
+                <Field label={t("fleet.service_type")} required>
+                  <select name="service_type_id" required className={inputCls}>
+                    <option value="">—</option>
+                    {vehicle.service_types.map((st) => (
+                      <option key={st.odoo_id} value={st.odoo_id}>
+                        {st.name}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label={t("leave.reason")}>
+                  <TextInput name="description" />
+                </Field>
+                <Field label={t("common.amount")}>
+                  <TextInput name="amount" type="number" min="0" step="0.01" />
+                </Field>
+                <Field label={t("common.date")}>
+                  <TextInput name="date" type="date" />
+                </Field>
+                <button className="h-9 px-4 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium">
+                  + {t("fleet.add_service")}
+                </button>
+              </div>
+              <div>
+                <p className="text-xs text-slate-400 mb-1">{t("fleet.included_services")}</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {vehicle.service_types.map((st) => {
+                    const on = subIds.includes(st.odoo_id);
+                    return (
+                      <button
+                        key={st.odoo_id}
+                        type="button"
+                        onClick={() => setSubIds((s) => (on ? s.filter((x) => x !== st.odoo_id) : [...s, st.odoo_id]))}
+                        className={`h-7 px-2.5 rounded-full text-xs ${on ? "bg-brand-600 text-white" : "bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300"}`}
+                      >
+                        {st.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             </form>
           )}
 
@@ -213,6 +240,7 @@ export default function VehicleDetail() {
                 <Td>
                   {s.service_type ?? "—"}
                   {s.description && <span className="block text-xs text-slate-400">{s.description}</span>}
+                  {s.included_services && <span className="block text-xs text-brand-500">+ {s.included_services}</span>}
                 </Td>
                 <Td className="tabular-nums text-xs">{s.date}</Td>
                 <Td className="tabular-nums">{s.amount != null ? money(s.amount) : "—"}</Td>
@@ -221,6 +249,27 @@ export default function VehicleDetail() {
               </tr>
             ))}
           </Table>
+
+          {/* Inspections (checklist) */}
+          <VehicleInspections
+            vehicleId={id}
+            inspections={vehicle.inspections ?? []}
+            templates={vehicle.inspection_templates ?? []}
+            items={vehicle.inspection_items ?? []}
+            writable={writable}
+            onChange={load}
+            onError={setError}
+          />
+
+          {/* Usage / checkout */}
+          <VehicleUsage
+            vehicleId={id}
+            usages={vehicle.usages ?? []}
+            drivers={drivers}
+            writable={writable}
+            onChange={load}
+            onError={setError}
+          />
         </div>
       </div>
     </div>

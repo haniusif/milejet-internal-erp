@@ -206,12 +206,44 @@ export interface FleetVehicle {
   odometer: number;
   odometer_unit: string | null;
   fuel_type: string | null;
+  category_name?: string | null;
+}
+
+export interface FleetInspectionLine {
+  id: number;
+  item_name: string | null;
+  result: string;
+  result_description: string | null;
+}
+
+export interface FleetInspection {
+  id: number;
+  name: string | null;
+  direction: string | null;
+  state: string;
+  result: string | null;
+  date_inspected: string | null;
+  odometer: number | null;
+  inspected_by: string | null;
+  note: string | null;
+  lines: FleetInspectionLine[];
+}
+
+export interface FleetUsage {
+  id: number;
+  name: string | null;
+  partner_name: string | null;
+  state: string;
+  date_picking: string | null;
+  date_return: string | null;
+  notes: string | null;
 }
 
 export interface FleetService {
   id: number;
   vehicle_name: string;
   service_type: string | null;
+  included_services?: string | null;
   description: string | null;
   date: string | null;
   amount: number | null;
@@ -361,8 +393,14 @@ export interface FleetVehicleDetail extends FleetVehicle {
   doors: number | null;
   acquisition_date: string | null;
   car_value: number | null;
+  fuel_capacity: number | null;
+  in_use: boolean;
   services: FleetService[];
+  inspections: FleetInspection[];
+  usages: FleetUsage[];
   service_types: { odoo_id: number; name: string }[];
+  inspection_templates: { odoo_id: number; name: string }[];
+  inspection_items: { odoo_id: number; name: string }[];
 }
 
 export interface LeaveAttachment {

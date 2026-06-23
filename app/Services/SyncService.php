@@ -14,9 +14,15 @@ use App\Models\Department;
 use App\Models\Employee;
 use App\Models\FinanceInvoice;
 use App\Models\FleetServiceLog;
+use App\Models\FleetInspection;
+use App\Models\FleetInspectionItem;
+use App\Models\FleetInspectionLine;
+use App\Models\FleetInspectionTemplate;
 use App\Models\FleetServiceType;
 use App\Models\FleetVehicle;
+use App\Models\FleetVehicleCategory;
 use App\Models\FleetVehicleModel;
+use App\Models\FleetVehicleUsage;
 use App\Models\FleetVehicleState;
 use App\Models\JobPosition;
 use App\Models\Leave;
@@ -149,11 +155,39 @@ class SyncService
                 $count++;
             }
 
+            // Vehicle categories (fleet_vehicle_category OCA addon).
+            $rows = $this->odoo->searchRead('fleet.vehicle.category', [], ['id', 'name'], 0, 0, 'name asc');
+            foreach ($rows as $row) {
+                FleetVehicleCategory::updateOrCreate(
+                    ['odoo_id' => $row['id']],
+                    ['name' => $row['name'], 'synced_at' => now()]
+                );
+                $count++;
+            }
+
+            // Inspection templates + items (fleet_vehicle_inspection[_template]).
+            $rows = $this->odoo->searchRead('fleet.vehicle.inspection.template', [], ['id', 'name'], 0, 0, 'name asc');
+            foreach ($rows as $row) {
+                FleetInspectionTemplate::updateOrCreate(
+                    ['odoo_id' => $row['id']],
+                    ['name' => $row['name'] ?: '—', 'synced_at' => now()]
+                );
+                $count++;
+            }
+            $rows = $this->odoo->searchRead('fleet.vehicle.inspection.item', [], ['id', 'name', 'instruction'], 0, 0, 'name asc');
+            foreach ($rows as $row) {
+                FleetInspectionItem::updateOrCreate(
+                    ['odoo_id' => $row['id']],
+                    ['name' => $row['name'] ?: '—', 'instruction' => $row['instruction'] ?: null, 'synced_at' => now()]
+                );
+                $count++;
+            }
+
             $rows = $this->odoo->searchRead(
                 'fleet.vehicle', [['active', 'in', [true, false]]],
                 ['id', 'name', 'model_id', 'license_plate', 'vin_sn', 'driver_id', 'state_id',
-                 'odometer', 'odometer_unit', 'fuel_type', 'model_year', 'color', 'seats',
-                 'doors', 'acquisition_date', 'car_value', 'active'],
+                 'odometer', 'odometer_unit', 'fuel_type', 'fuel_capacity', 'vehicle_category_id',
+                 'model_year', 'color', 'seats', 'doors', 'acquisition_date', 'car_value', 'active', 'in_use'],
                 0, 0, 'id asc'
             );
             foreach ($rows as $row) {
@@ -172,6 +206,9 @@ class SyncService
                         'odometer'               => $row['odometer'] ?? 0,
                         'odometer_unit'          => $row['odometer_unit'] ?: null,
                         'fuel_type'              => $row['fuel_type'] ?: null,
+                        'fuel_capacity'          => $row['fuel_capacity'] ?: null,
+                        'odoo_category_id'       => OdooService::many2oneId($row['vehicle_category_id']),
+                        'category_name'          => OdooService::many2oneName($row['vehicle_category_id']),
                         'model_year'             => $row['model_year'] ?: null,
                         'color'                  => $row['color'] ?: null,
                         'seats'                  => $row['seats'] ?: null,
@@ -179,18 +216,24 @@ class SyncService
                         'acquisition_date'       => $this->parseOdooDate($row['acquisition_date']),
                         'car_value'              => $row['car_value'] ?: null,
                         'active'                 => (bool) ($row['active'] ?? true),
+                        'in_use'                 => (bool) ($row['in_use'] ?? false),
                         'synced_at'              => now(),
                     ]
                 );
                 $count++;
             }
 
+            // Sub-service-type names by odoo id (fleet_vehicle_service_services).
+            $typeNames = FleetServiceType::pluck('name', 'odoo_id');
+
             $rows = $this->odoo->searchRead(
                 'fleet.vehicle.log.services', [],
-                ['id', 'vehicle_id', 'description', 'service_type_id', 'date', 'amount', 'vendor_id', 'state'],
+                ['id', 'vehicle_id', 'description', 'service_type_id', 'date', 'amount', 'vendor_id', 'state', 'service_ids'],
                 1000, 0, 'id desc'
             );
             foreach ($rows as $row) {
+                $included = collect($row['service_ids'] ?? [])
+                    ->map(fn ($id) => $typeNames[$id] ?? null)->filter()->implode(', ');
                 FleetServiceLog::updateOrCreate(
                     ['odoo_id' => $row['id']],
                     [
@@ -198,6 +241,7 @@ class SyncService
                         'vehicle_name'      => OdooService::many2oneName($row['vehicle_id']),
                         'description'       => $row['description'] ?: null,
                         'service_type_name' => OdooService::many2oneName($row['service_type_id']),
+                        'included_services' => $included ?: null,
                         'date'              => $this->parseOdooDate($row['date']),
                         'amount'            => $row['amount'] ?: null,
                         'vendor_name'       => OdooService::many2oneName($row['vendor_id']),
@@ -207,6 +251,89 @@ class SyncService
                 );
                 $count++;
             }
+
+            // Vehicle inspections + their checklist lines (fleet_vehicle_inspection).
+            $rows = $this->odoo->searchRead(
+                'fleet.vehicle.inspection', [],
+                ['id', 'name', 'vehicle_id', 'state', 'direction', 'date_inspected',
+                 'odometer', 'odometer_unit', 'inspected_by', 'result', 'note', 'inspection_line_ids'],
+                1000, 0, 'id desc'
+            );
+            $seenInspections = [];
+            $allLineIds = [];
+            foreach ($rows as $row) {
+                $seenInspections[] = $row['id'];
+                $allLineIds = array_merge($allLineIds, $row['inspection_line_ids'] ?? []);
+                FleetInspection::updateOrCreate(
+                    ['odoo_id' => $row['id']],
+                    [
+                        'odoo_vehicle_id'   => OdooService::many2oneId($row['vehicle_id']) ?? 0,
+                        'vehicle_name'      => OdooService::many2oneName($row['vehicle_id']),
+                        'name'              => $row['name'] ?: null,
+                        'state'             => $row['state'] ?: 'draft',
+                        'direction'         => $row['direction'] ?: null,
+                        'date_inspected'    => $this->parseOdooDate($row['date_inspected']),
+                        'odometer'          => $row['odometer'] ?: null,
+                        'odometer_unit'     => $row['odometer_unit'] ?: null,
+                        'inspected_by_name' => OdooService::many2oneName($row['inspected_by']),
+                        'result'            => $row['result'] ?: null,
+                        'note'              => is_string($row['note']) ? strip_tags($row['note']) : null,
+                        'synced_at'         => now(),
+                    ]
+                );
+                $count++;
+            }
+            FleetInspection::whereNotIn('odoo_id', $seenInspections)->delete();
+
+            // Inspection checklist lines.
+            $lineRows = $allLineIds
+                ? $this->odoo->read('fleet.vehicle.inspection.line', array_values(array_unique($allLineIds)),
+                    ['id', 'inspection_id', 'inspection_item_id', 'result', 'result_description', 'sequence'])
+                : [];
+            $seenLines = [];
+            foreach ($lineRows as $line) {
+                $seenLines[] = $line['id'];
+                FleetInspectionLine::updateOrCreate(
+                    ['odoo_id' => $line['id']],
+                    [
+                        'odoo_inspection_id' => OdooService::many2oneId($line['inspection_id']) ?? 0,
+                        'odoo_item_id'       => OdooService::many2oneId($line['inspection_item_id']),
+                        'item_name'          => OdooService::many2oneName($line['inspection_item_id']),
+                        'result'             => $line['result'] ?: 'todo',
+                        'result_description' => $line['result_description'] ?: null,
+                        'sequence'           => $line['sequence'] ?? 10,
+                        'synced_at'          => now(),
+                    ]
+                );
+            }
+            FleetInspectionLine::whereNotIn('odoo_id', $seenLines)->delete();
+
+            // Vehicle usage / checkout log (fleet_vehicle_usage).
+            $rows = $this->odoo->searchRead(
+                'fleet.vehicle.usage', [],
+                ['id', 'name', 'vehicle_id', 'partner_id', 'state', 'date_picking', 'date_return', 'notes'],
+                1000, 0, 'id desc'
+            );
+            $seenUsages = [];
+            foreach ($rows as $row) {
+                $seenUsages[] = $row['id'];
+                FleetVehicleUsage::updateOrCreate(
+                    ['odoo_id' => $row['id']],
+                    [
+                        'name'            => $row['name'] ?: null,
+                        'odoo_vehicle_id' => OdooService::many2oneId($row['vehicle_id']) ?? 0,
+                        'vehicle_name'    => OdooService::many2oneName($row['vehicle_id']),
+                        'partner_name'    => OdooService::many2oneName($row['partner_id']),
+                        'state'           => $row['state'] ?: 'draft',
+                        'date_picking'    => $this->parseOdooDate($row['date_picking']),
+                        'date_return'     => $this->parseOdooDate($row['date_return']),
+                        'notes'           => $row['notes'] ?: null,
+                        'synced_at'       => now(),
+                    ]
+                );
+                $count++;
+            }
+            FleetVehicleUsage::whereNotIn('odoo_id', $seenUsages)->delete();
 
             return $count;
         });

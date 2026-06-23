@@ -211,6 +211,7 @@ Route::prefix('v1')->group(function () {
             Route::get('/vehicles/{id}', 'vehicle')->whereNumber('id');
             Route::get('/services',      'services');
             Route::get('/models',        'models');
+            Route::get('/categories',    'categories');
             Route::get('/drivers',       'drivers');
             Route::middleware('can:fleet.write')->group(function () {
                 Route::post('/vehicles',                'storeVehicle');
@@ -218,6 +219,13 @@ Route::prefix('v1')->group(function () {
                 Route::post('/vehicles/{id}/odometer',  'updateOdometer')->whereNumber('id');
                 Route::post('/vehicles/{id}/driver',    'assignDriver')->whereNumber('id');
                 Route::post('/vehicles/{id}/services',  'addService')->whereNumber('id');
+                Route::post('/vehicles/{id}/inspections', 'addInspection')->whereNumber('id');
+                Route::post('/inspection-lines/{lineId}', 'setInspectionLine')->whereNumber('lineId');
+                Route::post('/inspections/{id}/{action}', 'inspectionAction')
+                    ->whereNumber('id')->whereIn('action', ['confirm', 'draft', 'cancel', 'delete']);
+                Route::post('/vehicles/{id}/usages', 'addUsage')->whereNumber('id');
+                Route::post('/usages/{id}/{action}', 'usageAction')
+                    ->whereNumber('id')->whereIn('action', ['pick', 'return', 'cancel']);
             });
         });
 
