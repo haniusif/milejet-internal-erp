@@ -21,6 +21,13 @@
             <span class="font-semibold text-brand-900 tabular-nums ms-1">{{ number_format($totals['total_wage'], 0) }}</span>
             <span class="text-brand-500 text-[10px] ms-0.5">{{ __('SAR') }}</span>
         </div>
+        <a href="{{ route('contracts.export', request()->query()) }}"
+           class="inline-flex items-center gap-2 h-9 px-4 rounded-md bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200 text-sm font-medium hover:bg-emerald-100 transition">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ico-sm">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+            {{ __('Export Excel') }}
+        </a>
     </div>
 </div>
 

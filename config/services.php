@@ -35,4 +35,15 @@ return [
         ],
     ],
 
+    // ID/licence OCR. driver: 'none' (disabled) | 'tesseract' (free, local) | 'google_vision'.
+    //   tesseract     → no key; uses the local `tesseract` binary (ara+eng).
+    //   google_vision → set OCR_API_KEY to a Cloud Vision API key.
+    'ocr' => [
+        'driver'         => env('OCR_DRIVER', 'none'),
+        'key'            => env('OCR_API_KEY'),
+        'endpoint'       => env('OCR_ENDPOINT'),
+        'tesseract_bin'  => env('OCR_TESSERACT_BIN', 'tesseract'),
+        'tesseract_langs' => env('OCR_TESSERACT_LANGS', 'ara+eng'),
+    ],
+
 ];

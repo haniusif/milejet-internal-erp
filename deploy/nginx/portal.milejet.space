@@ -1,0 +1,63 @@
+# portal.milejet.space → MileJet SPA (Next.js) + Laravel API
+#
+# The SPA (frontend/) is served by `next start -p 3000` (milejet-spa.service);
+# /api and /sanctum go to the Laravel app on the SAME host, so the SPA is
+# same-origin with the API: the .milejet.space SSO session cookie works and
+# no CORS is involved. portal.milejet.space is APP_URL, so it is already in
+# Sanctum's stateful-domain list.
+#
+# Install:
+#   sudo cp deploy/nginx/portal.milejet.space /etc/nginx/sites-available/portal-milejet
+#   sudo nginx -t && sudo systemctl reload nginx
+# Roll back to the Blade portal hub:
+#   sudo cp /etc/nginx/sites-available/portal-milejet.legacy.bak \
+#           /etc/nginx/sites-available/portal-milejet
+#   sudo nginx -t && sudo systemctl reload nginx
+
+server {
+    server_name portal.milejet.space;
+
+    root /var/www/milejet-internal-erp/public;
+
+    client_max_body_size 100M;
+
+    # ── Laravel API + Sanctum (same origin as the SPA) ──
+    location /api/ {
+        try_files $uri /index.php?$query_string;
+    }
+    location /sanctum/ {
+        try_files $uri /index.php?$query_string;
+    }
+    location = /index.php {
+        include snippets/fastcgi-php.conf;
+        fastcgi_pass unix:/run/php/php8.4-fpm.sock;
+    }
+
+    location ~ /\.ht {
+        deny all;
+    }
+
+    # ── Next.js SPA ──
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
+
+    listen 443 ssl; # managed by Certbot
+    ssl_certificate /etc/letsencrypt/live/portal.milejet.space/fullchain.pem; # managed by Certbot
+    ssl_certificate_key /etc/letsencrypt/live/portal.milejet.space/privkey.pem; # managed by Certbot
+    include /etc/letsencrypt/options-ssl-nginx.conf; # managed by Certbot
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem; # managed by Certbot
+}
+server {
+    if ($host = portal.milejet.space) {
+        return 301 https://$host$request_uri;
+    } # managed by Certbot
+
+    listen 80;
+    server_name portal.milejet.space;
+    return 404; # managed by Certbot
+}

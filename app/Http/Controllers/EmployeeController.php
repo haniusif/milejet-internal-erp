@@ -9,6 +9,7 @@ use App\Models\Employee;
 use App\Models\Leave;
 use App\Models\Payslip;
 use App\Models\WorkLocation;
+use App\Services\ExcelExport;
 use App\Services\OdooService;
 use App\Services\SyncService;
 use Illuminate\Http\Request;
@@ -22,6 +23,49 @@ class EmployeeController extends Controller
     ) {}
 
     public function index(Request $request)
+    {
+        // Plain employees don't get the directory — only their own profile.
+        $user = $request->user();
+        if (!$user->can('hr.view_all')) {
+            $own = $user->employeeRecord();
+            abort_unless($own, 403, __('Your account is not linked to an employee record.'));
+            return redirect()->route('employees.show', $own->id);
+        }
+
+        $employees = $this->filteredQuery($request)->paginate(20)->withQueryString();
+        $departments = Department::orderBy('name')->get();
+
+        return view('employees.index', compact('employees', 'departments'));
+    }
+
+    /** Same dataset as index (current filters applied), as an .xlsx download. */
+    public function export(Request $request)
+    {
+        $rows = $this->filteredQuery($request)->get()->map(fn ($e) => [
+            $e->emp_code,
+            $e->name,
+            $e->job_title,
+            $e->department_name,
+            $e->parent_name,
+            $e->nationality,
+            $e->iqama_id,
+            $e->work_email,
+            $e->mobile_phone,
+            $e->date_of_joining?->format('Y-m-d'),
+            $e->contract_status ? __($e->contract_status) : null,
+            $e->total_salary,
+            $e->active ? __('Active') : __('Inactive'),
+        ]);
+
+        return ExcelExport::download('employees-' . now()->format('Y-m-d') . '.xlsx', [
+            __('Code'), __('Name'), __('Job title'), __('Department'), __('Manager'),
+            __('Nationality'), __('Iqama / National ID'), __('Work email'), __('Mobile'),
+            __('Date of joining'), __('Contract status'), __('Salary'), __('Status'),
+        ], $rows);
+    }
+
+    /** Directory query with the index page's search/department filters applied. */
+    private function filteredQuery(Request $request)
     {
         $query = Employee::query();
 
@@ -40,10 +84,7 @@ class EmployeeController extends Controller
             $query->where('odoo_department_id', $deptId);
         }
 
-        $employees = $query->orderByDesc('odoo_id')->paginate(20)->withQueryString();
-        $departments = Department::orderBy('name')->get();
-
-        return view('employees.index', compact('employees', 'departments'));
+        return $query->orderByDesc('odoo_id');
     }
 
     public function orgChart()
@@ -86,6 +127,11 @@ class EmployeeController extends Controller
 
         $payload = array_filter($data, fn($v) => $v !== null && $v !== '');
 
+        // many2one ids arrive as strings from the form — Odoo needs ints.
+        foreach (['department_id', 'parent_id', 'work_location_id'] as $f) {
+            if (isset($payload[$f])) $payload[$f] = (int) $payload[$f];
+        }
+
         try {
             $odooId = $this->odoo->create('hr.employee', $payload);
             $this->sync->refreshEmployee($odooId);
@@ -100,6 +146,13 @@ class EmployeeController extends Controller
     public function show(int $id)
     {
         $employee = Employee::findOrFail($id);
+
+        // Plain employees may only open their own profile.
+        $user = auth()->user();
+        $isSelf = $user->employeeRecord()?->id === $employee->id;
+        if (!$isSelf && !$user->can('hr.view_all')) {
+            abort(403, __('You can only view your own profile.'));
+        }
 
         // Pull extra fields from Odoo on demand (not in local cache)
         $extra = [
@@ -151,10 +204,7 @@ class EmployeeController extends Controller
         $reports = $employee->subordinates()->where('active', true)->orderBy('name')->get();
 
         // Compensation, IDs and other private data: HR/payroll roles, or the
-        // employee viewing their own profile (matched by work email).
-        $user = auth()->user();
-        $isSelf = $employee->work_email
-            && strcasecmp($employee->work_email, $user->email) === 0;
+        // employee viewing their own profile.
         $canViewSensitive = $isSelf || $user->can('employees.view_sensitive');
 
         return view('employees.show', compact(
@@ -190,10 +240,11 @@ class EmployeeController extends Controller
             'work_location_id' => 'nullable|integer',
         ]);
 
-        // تحويل القيم الفارغة للـ many2one إلى false (لفك الربط في Odoo)
+        // many2one: القيم الفارغة → false (لفك الربط في Odoo)، والباقي → int
+        // (قيم النماذج تصل كنصوص؛ Odoo يرفض id نصّي بـ "Record does not exist")
         $payload = $data;
         foreach (['department_id', 'parent_id', 'work_location_id'] as $f) {
-            if (empty($payload[$f])) $payload[$f] = false;
+            $payload[$f] = empty($payload[$f]) ? false : (int) $payload[$f];
         }
 
         try {
@@ -203,7 +254,7 @@ class EmployeeController extends Controller
             return back()->withInput()->withErrors(['odoo' => $e->getMessage()]);
         }
 
-        return redirect()->route('employees.index')
+        return redirect()->route('employees.show', $employee->id)
             ->with('status', __('Employee details updated'));
     }
 

@@ -12,11 +12,19 @@ class Employee extends Model
 
     protected $casts = [
         'active'             => 'boolean',
+        'geofence_exempt'    => 'boolean',
+        'auto_renewal'       => 'boolean',
+        'contract_duration_months' => 'integer',
+        'notice_period_days'       => 'integer',
+        'probation_period_days'    => 'integer',
         'synced_at'          => 'datetime',
         'master_imported_at' => 'datetime',
         'date_of_joining'    => 'date',
         'contract_end_date'  => 'date',
         'birthday'           => 'date',
+        'iqama_expiry_date'    => 'date',
+        'license_expiry_date'  => 'date',
+        'passport_expiry_date' => 'date',
     ];
 
     public function department(): BelongsTo

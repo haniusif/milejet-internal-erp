@@ -1,516 +1,234 @@
-# MileJet HR System — Project Reference
+# MileJet Internal ERP — Project Reference & Status
 
-**Stack:** Laravel 13 + Odoo 17 Community + OCA Payroll
-**Working dir:** `/Users/haniyousif/dev/milejet-space/milejet-new-hr/hr-system`
-**Local URL:** http://127.0.0.1:8001 (run with PHP 8.4: `/opt/homebrew/opt/php@8.4/bin/php artisan serve`)
-**Database:** MySQL `milejet_controll` (local cache; Odoo is source of truth)
-**Mobile backend:** Sanctum-authenticated API under `/api/mobile/` (consumed by the Flutter `hr-mobile` app)
-**Repo:** `github.com/haniusif/milejet-internal-erp` (mobile app lives separately at `github.com/haniusif/milejet-mobile`)
-**Snapshot date:** 2026-06-03
+**Stack:** Laravel 13 (PHP 8.4) + Next.js 16 SPA (React 19, Tailwind 4) + Odoo 17 Community + OCA Payroll
+**Working dir (production):** `/var/www/milejet-internal-erp` — ⚠️ **this IS the live prod box**, deployed straight from the working tree
+**Database:** MySQL `milejet_controll` (local cache; **Odoo is the source of truth**)
+**Repo:** `github.com/haniusif/milejet-internal-erp` (Flutter mobile app lives at `github.com/haniusif/milejet-mobile`)
+**Snapshot date:** 2026-06-05
 
 ---
 
-## 1. Architecture
+## 1. Architecture (current)
 
 ```
-              [ User (Browser) ]
-                     │
-                     ▼
-            Laravel UI (Arabic RTL)
-            http://127.0.0.1:8001
-                     │
-        ┌────────────┼──────────────┐
-        ▼            │              ▼
-  MySQL DB           │      Odoo 17 (XML-RPC)
-  (read cache)       │      erp.milejet.space
-                     │              │
-                     └── write ─────┘
-                       (every CRUD)
+                        [ Users (Browser) ]
+                                │
+              https://portal.milejet.space  ←── THE app (SPA)
+                                │
+            ┌───────────────────┴────────────────────┐
+            ▼ /                                      ▼ /api, /sanctum
+   Next.js SPA (next start :3000)          Laravel API v1 (php-fpm)
+   frontend/ — HR·CRM·Fleet·Finance        /api/v1/* — Sanctum cookies
+   AR/EN + RTL · dark mode                          │
+                                       ┌────────────┼────────────┐
+                                       ▼            │            ▼
+                                  MySQL cache       │    Odoo 17 (XML-RPC)
+                                  (read path)       │    erp.milejet.space
+                                                    └── every write ──┘
+
+   hr/crm/fleet/finance.milejet.space → 301 to the matching SPA section
+   (their /api + /sanctum still pass through to Laravel for the mobile app)
 ```
 
-- **Read path:** Laravel UI reads from the local MySQL cache (fast).
-- **Write path:** Every create/update/delete goes to Odoo first; on success, the local SQLite record is refreshed.
-- **Sync:** Either manually via `php artisan odoo:sync` or by clicking the 🔄 button in the navbar.
-- **Auth:** Login validates credentials against Odoo's `res.users`. Laravel stores the user's Odoo email + encrypted API key.
+- **One URL for users:** `portal.milejet.space` serves the SPA; module subdomains redirect into it.
+- **Read path:** SPA → Laravel API → MySQL cache (fast). **Write path:** Laravel → Odoo first; local record refreshed on success.
+- **Sync:** `php artisan odoo:sync`, the ⟳ button (SPA header, `sync.run` gate), or `POST /api/v1/hr/sync`.
+- **Auth:** credentials validated against Odoo `res.users` (shared `OdooAuthService` used by web, SPA API and mobile). Roles mapped from Odoo groups on every login.
+- **SSO:** `SESSION_DOMAIN=.milejet.space` + Sanctum stateful cookies — one login covers SPA and any Blade page.
+- **Blade UI:** still in the codebase, no longer routed to users (rollback configs exist as `*.blade.bak`). The SPA reached full feature parity 2026-06-05.
+
+### Serving layout
+
+| Host | Serves | nginx config (live name) |
+|---|---|---|
+| portal.milejet.space | **SPA** + `/api`,`/sanctum` → Laravel | `portal-milejet` (`deploy/nginx/portal.milejet.space`) |
+| hr.milejet.space | 301 → portal/hr (+API passthrough) | `milejet-hr` (`deploy/nginx/hr.milejet.space.spa`) |
+| crm / fleet / finance | 301 → portal/<module> (+API passthrough) | `<mod>.milejet.space` (`deploy/nginx/<mod>.milejet.space.spa`) |
+| erp.milejet.space | **Odoo itself** — never claim this vhost | `odoo` |
+
+SPA process: `milejet-spa.service` (systemd) → `next start -p 3000` as `www-data` in `frontend/`.
 
 ---
 
-## 2. Odoo configuration
+## 2. Roles & permissions
+
+Roles live as a JSON array on `users.roles`, synced from Odoo `res.groups` at login (`OdooRoleMapper`, "Category / Name" matching). Every user gets `employee`; elevated roles stack on top:
+
+`admin`, `hr_manager`→`hr_officer`, `payroll_manager`→`payroll_officer`, `leave_manager`,
+`recruitment_manager`→`recruitment_officer`, `crm_manager`→`crm_user`, `fleet_manager`→`fleet_officer`,
+`finance_manager`→`finance_officer`.
+
+Gates defined in `AppServiceProvider` (`employees.write`, `payslips.view`, `hr.view_all`, `crm.view`, …).
+**Employee-only users are scoped to their own data** (profile, leaves, attendance, payslips) — enforced
+server-side in both web controllers and API v1; the `hr.view_all` gate separates HR staff from plain employees.
+The SPA receives precomputed `abilities` from `GET /api/v1/auth/me` to drive nav/buttons.
+
+User↔employee link: `users.odoo_employee_id` (set at login via `hr.employee.user_id`) with a
+work-email fallback — `User::employeeRecord()`.
+
+---
+
+## 3. The SPA (`frontend/`)
+
+Next 16 App Router · TypeScript · Tailwind 4 · no extra state libs. 27 routes, all client-rendered
+against the API. Custom cookie-based i18n (`mj_locale`, ar/en with full RTL flip) and dark mode
+(`mj_theme` cookie + Tailwind `@custom-variant dark`).
+
+| Module | Screens |
+|---|---|
+| HR | dashboard · employees (list/profile/**create/edit/delete**) · org chart · leaves (request/approve/refuse/delete + 📎 attachments) · attendance (check-in/out/delete) · payslips (list/detail/**bulk create**/recompute/delete) · recruitment (jobs + applicant pipeline) · contracts · departments admin · offices admin (geofence fields) |
+| CRM | pipeline **kanban with drag-drop stage moves**, won/lost/restore · customers · new lead/customer forms |
+| Fleet | vehicles (+stats/filters) · vehicle detail (state, odometer, driver assign, services) · new vehicle · service log |
+| Finance | invoices · bills · detail view |
+| Shell | module switcher (ability-gated) · role-aware HR nav (staff vs "my stuff") · ⟳ Odoo sync · AR/EN · dark mode · user menu w/ role badges |
+
+Key files: `src/lib/api.ts` (fetch + CSRF), `src/lib/auth.tsx`, `src/lib/i18n.tsx`,
+`src/components/{AppShell,ui,form,EmployeeForm,InvoiceList}.tsx`, `src/messages/{en,ar}.json`.
+
+**Redeploy:** `cd frontend && npm run build && sudo systemctl restart milejet-spa`
+
+---
+
+## 4. API v1 (`/api/v1/*`)
+
+Sanctum **stateful cookie** auth for the SPA (`statefulApi()` in bootstrap; CORS in `config/cors.php`).
+Controllers in `app/Http/Controllers/Api/V1/`:
+
+- `AuthController` — login/logout/me (me returns roles + abilities + employee link)
+- `HrController` — dashboard, employees, departments, leaves (+types/store/approve/refuse), attendances (+check-in/out), payslips
+- `HrAdminController` — employee CRUD, departments/work-locations CRUD, org-chart, contracts, payslip create (bulk)/compute/delete, leave attachments (list+stream)/delete, attendance delete, sync
+- `RecruitmentController` — jobs, applicants, store/stage/refuse/restore
+- `CrmController` — pipeline, lead store/stage/won/lost/restore, customers (+store)
+- `FleetController` — vehicles (+detail/store), services, models, drivers, state/odometer/driver/service actions
+- `FinanceController` — invoices, bills, show
+
+Same gates as web routes on every endpoint. Mobile API (`/api/mobile/*`, token-based) is unchanged
+and keeps working on every host (nginx passthrough).
+
+⚠️ **Routes are cached in prod** — after ANY change to `routes/*.php` run `php artisan route:cache`
+(same for `config:cache` after config/.env changes). A forgotten rebuild = silent 404s.
+
+---
+
+## 5. Odoo configuration
 
 | Setting | Value |
 |---|---|
-| Server | `https://erp.milejet.space` |
-| Version | Odoo **17.0 Community Edition** |
-| Database | `milejet` |
-| Company | MileJet (id=1) |
-| Working calendar | Standard 40 hours/week (id=1) |
+| Server | `https://erp.milejet.space` (Odoo **17.0 Community**) |
+| Database | `milejet` · Company MileJet (id=1) |
 | Admin user (this app) | `haniusif@gmail.com` |
+| Odoo conf / service | `/etc/odoo/odoo.conf` · `systemctl restart odoo` · venv `/opt/odoo/venv/` |
 
-### Installed addons (HR-related)
+HR addons: `hr_attendance`, `hr_contract`, `hr_expense`, `hr_fleet`, `hr_holidays`, `hr_org_chart`,
+`hr_recruitment`, `hr_skills`, plus OCA **`payroll`** (installed; `payroll_account`,
+`payroll_contract_advantages`, `payroll_hr_public_holidays`, `hr_payroll_document` available, not installed).
+Business modules synced: CRM (`crm.lead`, `res.partner`), Fleet (`fleet.vehicle` + logs), Finance (`account.move`).
 
-Core Odoo modules: `hr_attendance`, `hr_contract`, `hr_expense`, `hr_fleet`, `hr_holidays`, `hr_org_chart`, `hr_recruitment`, `hr_skills`, …
+### Payroll structure (SA-STD — Saudi Monthly Salary, 9 rules)
 
-Custom addons (from OCA):
+| Code | Category | When | Formula |
+|---|---|---|---|
+| `BASIC` | BASIC | always | `contract.wage * 10/13.5` |
+| `HOUSING` | ALW | always | `contract.wage * 3/13.5` |
+| `TRANSPORT` | ALW | always | `contract.wage * 0.5/13.5` |
+| `GROSS` | GROSS | always | `BASIC + ALW` |
+| `GOSI_EE` | DED | **Saudi only** | `-(BASIC+ALW) * 0.10` |
+| `NET` | NET | always | `GROSS + DED` |
+| `GOSI_ER_SA` | COMP | Saudi only | `min(wage*13/13.5, 45000) * 0.12` |
+| `GOSI_ER_FOREIGN` | COMP | non-Saudi | `min(wage*13/13.5, 45000) * 0.02` |
+| `EOS_ACCRUAL` | COMP | always | `(wage*10/13.5) / 24` |
 
-| Addon | State | Path |
-|---|---|---|
-| `payroll` | **installed** | `/opt/odoo/custom-addons/payroll/payroll` |
-| `payroll_account` | not installed | available |
-| `payroll_contract_advantages` | not installed | available |
-| `payroll_hr_public_holidays` | not installed | available |
-| `hr_payroll_document` | not installed | available |
-
-Odoo conf path: `/etc/odoo/odoo.conf`
-Service: `systemctl restart odoo`
-Python venv: `/opt/odoo/venv/`
-
----
-
-## 3. Data state
-
-### Counts (verified 2026-05-15)
-
-| Object | Odoo | Laravel local |
-|---|---:|---:|
-| Employees (`hr.employee`) | 36 | 36 |
-| Departments (`hr.department`) | 20 | 20 |
-| Contracts (`hr.contract`) | 34 | 34 |
-| Leave types (`hr.leave.type`) | 4 | 4 |
-| Leaves (`hr.leave`) | 0 | 0 |
-| Attendances (`hr.attendance`) | 1 | 1 |
-| Payslips (`hr.payslip`) | 2 | 2 |
-| Payslip lines (`hr.payslip.line`) | — | 22 |
-| Salary rule categories | 6 | — |
-| Salary rules | 9 | — |
-| Payroll structures | 1 | — |
-
-### Imported data (from `public/Master Sheet - HR-2026.xlsx`)
-
-**34 employees** (codes MJ-001 to MJ-034) imported into `hr.employee` with:
-
-- `name`, `job_title`, `identification_id` (MJ-NNN), `birthday` (DOB)
-- `parent_id` (manager chain) — 33 of 34 linked (KHALID FOUAD is top of org)
-- `country_id` — 33 of 34 backfilled from Excel `Nat` column
-
-**34 contracts** (one per employee) with:
-
-- `wage` = Total Salary from Excel
-- `date_start` = DOJ, `date_end` = contract end date
-- `state` = `open`
-- `struct_id` = SA-STD (Saudi Monthly Salary)
-
-### Nationality distribution
-
-| Excel value | ISO | Count |
-|---|---|---:|
-| Sudanese | SD | 14 |
-| Pakistani | PK | 6 |
-| Yemeni | YE | 4 |
-| Bangladeshi | BD | 4 |
-| Jordanian | JO | 2 |
-| Myanmar | MM | 2 |
-| Egyptian | EG | 1 |
-| Chadian | TD | 1 |
-| **Total** | | **34** |
-
-No Saudi nationals — by current rules, `GOSI_EE` deduction never fires.
+Nationality gate: `employee.country_id.code == 'SA'` (both branches verified with test payslips —
+see git history / Odoo for the worked examples). Master data originally imported from
+`public/Master Sheet - HR-2026.xlsx` (34 employees MJ-001…MJ-034 + contracts, manager chain, nationalities).
 
 ---
 
-## 4. Payroll configuration
+## 6. Laravel app layout
 
-### Structure
-- **Name:** Saudi Monthly Salary
-- **Code:** SA-STD
-- **Company:** MileJet
-- **Rule count:** 9
-
-### Salary rules
-
-| Code | Name | Category | When | Formula |
-|---|---|---|---|---|
-| `BASIC` | Basic Salary | BASIC | always | `contract.wage * 10/13.5` |
-| `HOUSING` | Housing Allowance | ALW | always | `contract.wage * 3/13.5` |
-| `TRANSPORT` | Transport Allowance | ALW | always | `contract.wage * 0.5/13.5` |
-| `GROSS` | Gross Salary | GROSS | always | `categories.BASIC + categories.ALW` |
-| `GOSI_EE` | GOSI — Employee (10%) | DED | **Saudi only** | `-(categories.BASIC + categories.ALW) * 0.10` |
-| `NET` | Net Salary | NET | always | `categories.GROSS + categories.DED` |
-| `GOSI_ER_SA` | GOSI — Employer (12%) | COMP | **Saudi only** | `min(wage*13/13.5, 45000) * 0.12` |
-| `GOSI_ER_FOREIGN` | GOSI — Employer (2%) | COMP | **non-Saudi** | `min(wage*13/13.5, 45000) * 0.02` |
-| `EOS_ACCRUAL` | End-of-Service Accrual | COMP | always | `(wage*10/13.5) / 24` |
-
-### Categories
-
-| Code | Name | Affects NET? |
-|---|---|---|
-| BASIC | Basic | yes |
-| ALW | Allowance | yes |
-| GROSS | Gross | sum line |
-| DED | Deduction | yes |
-| NET | Net | result line |
-| COMP | Employer Cost | **no** (employer-side cost only) |
-
-### Nationality gating logic
-
-```python
-# Saudi-only rules
-result = bool(employee.country_id) and employee.country_id.code == 'SA'
-
-# Non-Saudi-only rules
-result = not employee.country_id or employee.country_id.code != 'SA'
 ```
+app/Http/Controllers/          — Blade controllers (Auth, Dashboard, Employee, Department,
+                                 WorkLocation, Leave, Attendance, Contract, Payslip,
+                                 Recruitment, Crm, Fleet, Finance, Preferences, MobileApi)
+app/Http/Controllers/Api/V1/   — SPA API (see §4)
+app/Services/                  — OdooService (XML-RPC; per-user creds + useServiceAccount()),
+                                 OdooAuthService (shared login), OdooRoleMapper, SyncService
+app/Models/                    — User + cache mirrors (Employee, Department, WorkLocation, Leave,
+                                 LeaveType, Attendance, Contract, Payslip(+Line), JobPosition,
+                                 Applicant, RecruitmentStage, Crm*, Fleet*, FinanceInvoice, SyncLog)
+routes/                        — web.php (Blade, role-gated), api.php (mobile + v1),
+                                 portal/crm/fleet/finance.php (domain-bound roots)
+frontend/                      — the SPA (see §3)
+deploy/nginx/                  — tracked vhost configs (portal + 4 redirect configs)
+```
+
+Mobile API specifics (geofenced attendance, leave attachments, provisioning via
+`php artisan odoo:provision-users`) are unchanged — see `MobileApiController` and `config/attendance.php`.
 
 ---
 
-## 5. Verified test computations
+## 7. Operations
 
-### Test 1 — SABRI OMER (Sudanese, wage 13,999.50)
-
-```
-BASIC              10,370.00   [Basic]
-HOUSING             3,111.00   [Allowance]
-TRANSPORT             518.50   [Allowance]
-GROSS              13,999.50   [Gross]
-NET                13,999.50   [Net]       ← no employee GOSI
-─── Employer Cost ────────────────────
-GOSI_ER_FOREIGN       269.62   (2%)
-EOS_ACCRUAL           432.08
-```
-
-### Test 2 — KHALID FOUAD as Saudi (wage 16,000)
-
-```
-BASIC              11,851.85   [Basic]
-HOUSING             3,555.56   [Allowance]
-TRANSPORT             592.59   [Allowance]
-GROSS              16,000.00   [Gross]
-GOSI_EE            -1,600.00   [Deduction]
-NET                14,400.00   [Net]
-─── Employer Cost ────────────────────
-GOSI_ER_SA          1,848.89   (12%)
-EOS_ACCRUAL           493.83
-```
-
-Both branches verified — nationality gate works.
-
----
-
-## 6. Laravel app
-
-### Database tables
-
-```
-users              — local mirror of res.users (with encrypted API key)
-departments        — local cache of hr.department
-employees          — local cache of hr.employee
-leave_types        — local cache of hr.leave.type
-leaves             — local cache of hr.leave
-attendances        — local cache of hr.attendance (+ in_/out_latitude/longitude geofence columns)
-contracts          — local cache of hr.contract
-payslips           — local cache of hr.payslip (with rolled-up totals)
-payslip_lines      — local cache of hr.payslip.line
-sync_logs          — every sync operation logged
-sessions           — Laravel session storage
-```
-
-### Routes
-
-| Method | URL | Action |
-|---|---|---|
-| GET | `/login` | Show login form |
-| POST | `/login` | Authenticate against Odoo `res.users` |
-| POST | `/logout` | End session |
-| GET | `/` | Dashboard |
-| POST | `/sync` | Trigger sync (model param: all/employees/contracts/etc.) |
-| GET | `/employees` | List + filter + paginate |
-| GET | `/employees/create` | Form |
-| POST | `/employees` | Create in Odoo + sync |
-| GET | `/employees/{id}/edit` | Edit form |
-| PUT | `/employees/{id}` | Update in Odoo + sync |
-| DELETE | `/employees/{id}` | Unlink in Odoo + delete locally |
-| GET | `/departments` | Same CRUD pattern |
-| GET | `/leaves` | List + filter (shows an **Attachments** column with download links) |
-| GET | `/leaves/attachments/{id}` | Stream a leave attachment file inline |
-| POST | `/leaves` | Create leave request |
-| POST | `/leaves/{id}/approve` | `action_confirm` + `action_approve` (Odoo faults shown as friendly messages) |
-| POST | `/leaves/{id}/refuse` | `action_refuse` |
-| GET | `/attendances` | List + filter |
-| POST | `/attendances/check-in` | Create `hr.attendance` |
-| POST | `/attendances/{id}/check-out` | Write `check_out` |
-| GET | `/contracts` | List + filter (read-only) |
-| GET | `/payslips` | List + filter + month picker + totals |
-| GET | `/payslips/create` | Generate form |
-| POST | `/payslips` | Create + `compute_sheet` + sync |
-| GET | `/payslips/{id}` | Detail view with lines |
-| POST | `/payslips/{id}/compute` | Recompute |
-| DELETE | `/payslips/{id}` | Cancel + unlink |
-
-### Controllers
-
-```
-app/Http/Controllers/
-├── AuthController.php       — login/logout via Odoo
-├── DashboardController.php  — stats + sync trigger
-├── EmployeeController.php   — CRUD on hr.employee
-├── DepartmentController.php — CRUD on hr.department
-├── LeaveController.php      — create/approve/refuse leaves; list + stream leave attachments; friendly Odoo errors
-├── AttendanceController.php — check-in / check-out
-├── ContractController.php   — read-only list
-└── PayslipController.php    — full payslip workflow
-```
-
-### Services
-
-```
-app/Services/
-├── OdooService.php  — XML-RPC client wrapper (per-user credentials; `useServiceAccount()` reverts to the admin/service account for privileged ops like hr.attendance / ir.attachment)
-└── SyncService.php  — pull each model from Odoo + write into local DB
-```
-
-### Models
-
-```
-app/Models/
-├── User.php          — Authenticatable + Crypt for api_key
-├── Employee.php      — relationships to Department, Leave, Attendance, Contract
-├── Department.php
-├── Leave.php         — stateLabel/stateColor for UI
-├── LeaveType.php
-├── Attendance.php
-├── Contract.php      — stateLabel/stateColor
-├── Payslip.php       — relationships + helpers
-├── PayslipLine.php   — line-item detail
-└── SyncLog.php
-```
-
----
-
-## 6b. Mobile API (Sanctum)
-
-`app/Http/Controllers/MobileApiController.php`, routes in `routes/api.php` under `/api/mobile/`.
-
-- **Auth:** `POST /mobile/login` validates email + password (Odoo password *or* API key) against Odoo
-  `res.users` via XML-RPC, links the employee by `hr.employee.user_id = uid`, then returns a Sanctum
-  bearer token (30-day expiry). The local `users` row is auto-created on first login (`updateOrCreate`
-  on `odoo_uid`).
-- **Endpoints:** `me`, `leaves`, `leave-types`, `leaves` (POST), `leaves/attachments/{id}`,
-  `attendance`, `attendance/config`, `attendance/current`, `attendance/check-in`,
-  `attendance/{id}/check-out`, `payslips`, `payslips/{id}`, `notifications` (stub), `logout`.
-- **Error shape:** 4xx responses return `{message, errors?}` (Laravel validation `errors` map on 422);
-  the app surfaces them inline. Odoo business errors are mapped to friendly EN/AR messages.
-
-### Geofenced attendance
-
-Check-in/out are restricted to within a configurable radius of the office.
-
-- **Config:** `config/attendance.php` ← `.env` keys `ATTENDANCE_OFFICE_LAT/LNG`,
-  `ATTENDANCE_GEOFENCE_RADIUS` (meters, default 300), `ATTENDANCE_GEOFENCE_ENFORCE` (bool).
-- `GET /mobile/attendance/config` exposes `{latitude, longitude, radius, enforce}` to the app.
-- `checkIn`/`checkOut` accept `latitude`/`longitude`, validate distance with a Haversine helper, reject
-  out-of-radius (or missing-when-enforced) punches with **HTTP 422**, write Odoo GPS fields
-  (`in_/out_latitude/longitude`) + the local geo columns, and return the coordinates.
-- **Service-account punch (2026-06-02):** regular employees lack `hr.attendance` create/write rights in
-  Odoo, so `checkIn`/`checkOut` call `OdooService::useServiceAccount()` before writing. `employee_id`
-  is set server-side from the authenticated user — a user can only ever punch as themselves.
-- `currentAttendance` returns `null` for no open attendance; the app also treats an empty `{}`/id-less
-  body as "not checked in" (avoids a phantom checked-in card).
-
-### Leave attachments (2026-06-03)
-
-- **Create:** `POST /mobile/leaves` accepts an optional `attachment: {name, data}` where `data` is
-  base64 (capped ~5 MB). After the `hr.leave` is created, an Odoo `ir.attachment`
-  (`res_model=hr.leave`, `res_id`, `type=binary`) is created via the service account — best-effort
-  (a failed upload never voids the leave).
-- **List:** `GET /mobile/leaves` includes an `attachments: [{id, name, mimetype}]` array per leave,
-  batch-fetched from Odoo in one call.
-- **Download:** `GET /mobile/leaves/attachments/{id}` returns `{name, mimetype, data(base64)}`, but only
-  if the attachment belongs to one of the authenticated employee's own leaves.
-- The web dashboard surfaces the same attachments (Attachments column + inline file streaming).
-
-### Employee user provisioning
-
-`php artisan odoo:provision-users` creates internal `res.users` (attendance self-service) for
-employees with no linked Odoo user and sets `hr.employee.user_id` so they can log in to the mobile app.
-Uses `work_email` when present, otherwise builds `{emp_code}@{--domain}` (default `milejet.space`).
-Dry-run by default; `--apply` writes to Odoo and exports a credentials CSV to `storage/app/`.
-**Run 2026-06-01:** provisioned 45 accounts (password `12345678`), 47 employees now linked; 2 edge
-cases skipped (one with no emp_code, one with a stale `odoo_id`).
-
----
-
-## 7. How to run
-
-### Start the server
 ```bash
-cd /Users/haniyousif/dev/milejet-space/milejet-new-hr/hr-system
-/opt/homebrew/opt/php@8.4/bin/php artisan serve --host=127.0.0.1 --port=8001
+# SPA redeploy
+cd /var/www/milejet-internal-erp/frontend && npm run build && sudo systemctl restart milejet-spa
+
+# Laravel caches (ALWAYS after route/config changes)
+php artisan route:cache && php artisan config:cache && php artisan view:cache
+
+# Sync from Odoo
+php artisan odoo:sync            # everything
+php artisan odoo:sync payslips   # one model
+
+# Logs
+journalctl -u milejet-spa -f
+tail -f storage/logs/laravel.log
+
+# Rollbacks (nginx) — per subdomain
+sudo cp /etc/nginx/sites-available/portal-milejet.legacy.bak /etc/nginx/sites-available/portal-milejet \
+  && sudo nginx -t && sudo systemctl reload nginx        # Blade portal hub back
+# (hr/crm/fleet/finance have *.blade.bak equivalents)
 ```
 
-### Sync data manually
-```bash
-php artisan odoo:sync                # everything
-php artisan odoo:sync contracts      # specific model
-php artisan odoo:sync payslips
-```
+**Env keys:** `ODOO_*`, `SESSION_DOMAIN=.milejet.space`, `APP_URL=https://portal.milejet.space`
+(makes portal Sanctum-stateful automatically), `ATTENDANCE_*` (geofence), `CORS_ALLOWED_ORIGINS` (dev only).
 
-### Provision employee login accounts
-```bash
-php artisan odoo:provision-users               # dry-run preview
-php artisan odoo:provision-users --apply        # create + link users, export CSV
-```
-
-### Run migrations (fresh database)
-```bash
-php artisan migrate
-```
-
-### Login credentials (admin)
-- URL: http://127.0.0.1:8001/login
-- Email: `haniusif@gmail.com`
-- Password / API key: same as your Odoo account
+⚠️ **Never run destructive tests/migrations here** — live DB. (2026-06-05 incident: tests with cached
+config wiped the DB; guards now live in `TestCase` + `phpunit.xml`.)
+⚠️ `erp.milejet.space` is Odoo — adding that server_name to nginx shadows the ERP backbone.
 
 ---
 
-## 8. Environment
+## 8. Known caveats
 
-`.env` configuration (already populated):
-
-```env
-APP_NAME="HR System"
-APP_ENV=local
-APP_KEY=base64:<auto-generated>
-APP_DEBUG=true
-
-DB_CONNECTION=mysql
-DB_DATABASE=milejet_controll
-
-ODOO_URL=https://erp.milejet.space
-ODOO_DB=milejet
-ODOO_USERNAME=haniusif@gmail.com
-ODOO_API_KEY=2a52bd350ca92d798d5402e08b3b384f77e544c3
-ODOO_VERIFY_SSL=true
-
-# Geofenced attendance — set to your real office coordinates
-ATTENDANCE_OFFICE_LAT=24.7136
-ATTENDANCE_OFFICE_LNG=46.6753
-ATTENDANCE_GEOFENCE_RADIUS=300
-ATTENDANCE_GEOFENCE_ENFORCE=true
-```
-
-⚠️ The API key is currently in plain text in `.env` — treat it as a secret. `.env` is excluded by Laravel's default `.gitignore`.
-
-Dependencies:
-- PHP 8.4.7 (Homebrew)
-- Composer
-- `phpxmlrpc/phpxmlrpc` ^4.11
-
----
-
-## 9. Caveats / known limitations
-
-| Area | Limitation |
+| Area | Note |
 |---|---|
-| Payroll formula | 74/22/4 basic/housing/transport split is a Saudi convention, not your real Excel breakdown. Per-employee allowances (House, Transport, Special, Project, Food etc.) are not used yet — they're in Excel cols 24-31. |
-| GOSI base | `GOSI_EE` deducts 10% of full gross. Per Saudi law it should be 10% of (basic + housing) capped at 45,000 SAR. Easy fix — patch the formula. |
-| Employer cost in Laravel | Local payslip totals roll up BASIC/ALW/GROSS/DED/NET — but COMP (Employer Cost) is not surfaced in the UI. Migration + view change needed if you want it. |
-| Employee login | **Resolved (2026-06-01).** `php artisan odoo:provision-users --apply` created internal `res.users` for 45 employees and linked `hr.employee.user_id`; 47 now log in to the mobile app. Shared password `12345678` should be rotated. 2 employees still need manual fixes (missing emp_code / stale odoo_id). |
-| Work-week calendar | Employees use Odoo's default **Standard 40h (Mon–Fri)** calendar, but the Saudi work week is **Sun–Thu**. A leave on Sun/Sat computes **0 working days** and Odoo refuses approval ("not supposed to work during that period"). The dashboard now shows a friendly message for this; the real fix is switching the working calendar to Sun–Thu (affects attendance/payroll). |
-| Sync limits | `syncLeaves` pulls last 500. `syncAttendances` pulls last 1000. `syncPayslips` pulls last 500. Adjust in `SyncService.php` if you outgrow these. |
-| Soft deletes | If a record is deleted in Odoo, the local sync doesn't remove it. (We saw this with the original Hani Yousif duplicate — cleanup is manual.) |
-| OCA payroll docs gap | OCA payroll uses `condition_python` / `amount_python_compute` differently from Odoo Enterprise payroll. Examples in this codebase work; some online tutorials targeting Enterprise won't. |
+| Payroll split | 74/22/4 basic/housing/transport is a convention; per-employee Excel allowances (cols 24-31) not used in rules yet |
+| GOSI base | `GOSI_EE` deducts 10% of full gross; law says 10% of (basic+housing) capped 45,000 — formula patch pending |
+| Employer cost | COMP category not rolled up into local payslip totals/UI |
+| Work-week calendar | Odoo default Mon–Fri vs Saudi Sun–Thu — Sun/Sat leaves compute 0 days (friendly error shown); real fix = switch calendar |
+| Sync limits | leaves 500 / attendances 1000 / payslips 500 most-recent (SyncService) |
+| Deletes in Odoo | not propagated by sync — manual local cleanup |
+| Shared password | provisioned employee accounts (2026-06-01) still on `12345678` — rotate |
+| Mobile app | still calls `hr.milejet.space/api/mobile/*` — works via passthrough; consider repointing to portal |
 
 ---
 
-## 10. Roadmap / outstanding decisions
+## 9. Status log
 
-These were proposed but not implemented:
+- **2026-06-05 — SPA cutover (this snapshot):** role scoping for employee-only users (own data only);
+  fixed Odoo string-id bug (form many2one ids now cast to int) + employee update redirect;
+  built API v1 (all modules) + Next.js SPA with **full Blade feature parity** incl. dark mode;
+  deployed on portal.milejet.space (`milejet-spa.service`); hr/crm/fleet/finance subdomains now 301
+  into the SPA; Blade UI retired from user traffic (rollback configs kept).
+- **2026-06-05 (earlier):** Finance module; module-aware header; Fleet finalized on fleet.milejet.space;
+  CRM on crm.milejet.space; portal hub cards wired (commits `0316b96`…`6332a38`).
+- **2026-06-03:** leave attachments (mobile + web); friendly Odoo error mapping.
+- **2026-06-02:** service-account attendance punch (employees lack hr.attendance rights).
+- **2026-06-01:** provisioned 45 employee `res.users` for mobile login.
+- **2026-05:** payroll build-out (SA-STD structure, GOSI nationality gating, EOS accrual), Excel master
+  import (34 employees + contracts), payslip workflow end-to-end.
 
-1. ~~**Employee login**~~ — **done** via option (C): `odoo:provision-users` creates one `res.users`
-   per employee. Follow-ups: rotate the shared `12345678` password (or force reset on first login),
-   and fix the 2 skipped employees.
-2. **Per-employee allowances** — install OCA `payroll_contract_advantages` OR use `hr.payslip.input` for monthly variable inputs
-3. **Tighten GOSI_EE formula** to (basic + housing) only, capped at 45,000
-4. **Surface employer cost (COMP)** in Laravel payslip views
-5. **Mobile experience** — make Laravel app fully responsive + register as PWA so employees can install from home screen
-6. **OCA add-ons** to consider installing:
-   - `payroll_account` (journal entries from payslips)
-   - `hr_payroll_document` (PDF payslip generation)
-   - `payroll_contract_advantages` (per-contract allowance fields)
-
----
-
-## 11. Quick references
-
-### Useful tinker queries
-
-```php
-// Verify Odoo connection
-$odoo = app(App\Services\OdooService::class);
-$odoo->searchCount('hr.employee', []);
-
-// Get an employee
-App\Models\Employee::where('name', 'SABRI OMER')->first();
-
-// Recompute a payslip
-$odoo->executeKw('hr.payslip', 'compute_sheet', [[1]]);
-
-// Patch a salary rule
-$odoo->write('hr.salary.rule',
-    $odoo->search('hr.salary.rule', [['code','=','GOSI_EE']]),
-    ['amount_python_compute' => '...']);
-```
-
-### Adding a new HR model (sync pattern)
-
-1. Migration: add table with `odoo_id` unique + your fields + `synced_at`.
-2. Model: `protected $guarded = ['id'];` + relationships.
-3. `SyncService::syncFoo()`: read from Odoo, `updateOrCreate` keyed on `odoo_id`.
-4. Wire into `syncAll()`, `SyncOdooCommand`, and `DashboardController::sync`.
-5. Optional: controllers + routes + views.
-
-### Adding a salary rule
-
-```php
-$odoo->create('hr.salary.rule', [
-    'name' => 'Your Rule',
-    'code' => 'YOUR_CODE',
-    'category_id' => $catId['ALW'],  // BASIC|ALW|GROSS|DED|NET|COMP
-    'sequence' => 50,
-    'condition_select' => 'none',     // or 'python'
-    'condition_python' => 'result = True',
-    'amount_select' => 'code',
-    'amount_python_compute' => 'result = contract.wage * 0.05',
-    'appears_on_payslip' => true,
-    'company_id' => 1,
-]);
-
-// Attach to structure (use union, not replace)
-$structId = 1; // SA-STD
-$current = $odoo->read('hr.payroll.structure', [$structId], ['rule_ids'])[0]['rule_ids'];
-$merged = array_values(array_unique(array_merge($current, [$newRuleId])));
-$odoo->write('hr.payroll.structure', [$structId], ['rule_ids' => [[6, 0, $merged]]]);
-```
-
----
-
-## 12. Conversation history (this build)
-
-In chronological order:
-
-1. Explored the original `hr-full/` source folder
-2. Scaffolded fresh Laravel project as sibling: `hr-system/`
-3. Installed `phpxmlrpc`, registered `OdooServiceProvider`, ran migrations
-4. Connected to `erp.milejet.space` with user creds + API key
-5. First sync: 1 dept / 3 employees / 4 leave types
-6. Imported 34 employees from Excel `Master Sheet - HR-2026.xlsx`
-7. Discovered Odoo Community has no payroll → installed OCA `payroll` 17.0 on VPS
-8. Created 34 `hr.contract` records with wages from Excel
-9. Built SA-STD payroll structure + 6 base rules in Odoo
-10. Generated test payslip → math verified (BASIC + HOUSING + TRANSPORT = wage; NET = gross - GOSI)
-11. Built Laravel-side payroll: migrations, models, sync, controllers, routes, views
-12. Verified end-to-end: created SABRI OMER's May 2026 payslip via Laravel UI
-13. Added nationality gating to GOSI rules + backfilled 33/34 country_id values
-14. Added 3 Saudi-compliant rules: GOSI_ER_SA, GOSI_ER_FOREIGN, EOS_ACCRUAL
-15. Verified both nationality branches fire correctly
-
-End of build snapshot.
+**Outstanding / roadmap:** commit the 2026-06-05 work to git (large uncommitted set!);
+rotate shared mobile password; GOSI_EE formula fix; surface COMP in payslip UI; Sun–Thu calendar;
+repoint mobile app base URL to portal; consider `payroll_account` / `hr_payroll_document` OCA addons.

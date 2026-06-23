@@ -1,0 +1,54 @@
+# hr.milejet.space → 301 to the SPA's HR module on portal.milejet.space
+#
+# Since 2026-06-05 the SPA on portal.milejet.space is the user-facing app.
+# /api and /sanctum still hit Laravel on THIS host so the mobile app and any
+# API clients keep working unchanged. Blade paths map onto SPA paths under
+# /hr (employees/5 → /hr/employees/5 etc.).
+#
+# Legacy Blade UI (full ERP) remains reachable at erp.milejet.space.
+#
+# Install:
+#   sudo cp deploy/nginx/hr.milejet.space.spa /etc/nginx/sites-available/milejet-hr
+#   sudo nginx -t && sudo systemctl reload nginx
+# Roll back: restore /etc/nginx/sites-available/milejet-hr.blade.bak
+
+server {
+    server_name hr.milejet.space;
+
+    root /var/www/milejet-internal-erp/public;
+    client_max_body_size 100M;
+
+    # API clients (mobile app) keep working on this host
+    location /api/ {
+        try_files $uri /index.php?$query_string;
+    }
+    location /sanctum/ {
+        try_files $uri /index.php?$query_string;
+    }
+    location = /index.php {
+        include snippets/fastcgi-php.conf;
+        fastcgi_pass unix:/run/php/php8.4-fpm.sock;
+    }
+
+    # Blade's /attendances lives at /hr/attendance in the SPA
+    location = /attendances {
+        return 301 https://portal.milejet.space/hr/attendance;
+    }
+    location = / {
+        return 301 https://portal.milejet.space/hr;
+    }
+    location / {
+        return 301 https://portal.milejet.space/hr$request_uri;
+    }
+
+    listen 443 ssl;
+    ssl_certificate /etc/letsencrypt/live/hr.milejet.space/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/hr.milejet.space/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+}
+server {
+    listen 80;
+    server_name hr.milejet.space;
+    return 301 https://$host$request_uri;
+}

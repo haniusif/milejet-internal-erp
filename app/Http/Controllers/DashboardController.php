@@ -14,6 +14,16 @@ class DashboardController extends Controller
 {
     public function index()
     {
+        // Plain employees get no company-wide dashboard — send them to
+        // their own profile (it already shows leaves/attendance/payslips).
+        $user = auth()->user();
+        if (!$user->can('hr.view_all')) {
+            $own = $user->employeeRecord();
+            return $own
+                ? redirect()->route('employees.show', $own->id)
+                : redirect()->route('leaves.index');
+        }
+
         $stats = [
             'employees'       => Employee::where('active', true)->count(),
             'departments'     => Department::count(),

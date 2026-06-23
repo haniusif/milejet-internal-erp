@@ -12,6 +12,10 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // SPA cookie auth (Sanctum): requests from SANCTUM_STATEFUL_DOMAINS
+        // get session/CSRF on api routes; mobile token auth is unaffected.
+        $middleware->statefulApi();
+
         $middleware->alias([
             'role' => \App\Http\Middleware\EnsureRole::class,
         ]);

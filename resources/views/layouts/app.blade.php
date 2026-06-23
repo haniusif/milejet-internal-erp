@@ -88,21 +88,30 @@
         'crm.customers'    => '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>',
         'fleet.index'      => '<path d="M5 17h-2v-6l2-5h9l4 5h3a2 2 0 0 1 2 2v4h-2"/><circle cx="7" cy="17" r="2"/><circle cx="17" cy="17" r="2"/><path d="M9 17h6"/>',
         'fleet.services'   => '<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>',
+        'settings.index'   => '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
+        'settings.countries' => '<circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>',
+        'settings.config'  => '<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>',
         'finance.invoices' => '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8M16 17H8M10 9H8"/>',
         'finance.bills'    => '<rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/>',
     ];
-    // Per-module nav: [route, label, gate, active-route patterns]
+    $user = Auth::user();
+    // Per-module nav: [route, label, gate, active-route patterns].
+    // Plain employees (no HR staff role) only get their own corner of HR:
+    // profile, leaves, attendance and payslips — all self-scoped server-side.
     $navByModule = [
-        'hr' => [
+        'hr' => $user->can('hr.view_all') ? [
             ['dashboard',            __('Dashboard'),   null,               ['dashboard']],
             ['employees.index',      __('Employees'),   null,               ['employees.*']],
-            ['departments.index',    __('Departments'), null,               ['departments.*']],
-            ['work-locations.index', __('Offices'),     null,               ['work-locations.*']],
             ['leaves.index',         __('Leaves'),      null,               ['leaves.*']],
             ['attendances.index',    __('Attendance'),  null,               ['attendances.*']],
             ['recruitment.jobs',     __('Recruitment'), 'recruitment.view', ['recruitment.*']],
             ['contracts.index',      __('Contracts'),   'contracts.view',   ['contracts.*']],
             ['payslips.index',       __('Payslips'),    'payslips.view',    ['payslips.*']],
+        ] : [
+            ['employees.index',      __('My Profile'),  null,               ['employees.*']],
+            ['leaves.index',         __('My Leaves'),   null,               ['leaves.*']],
+            ['attendances.index',    __('Attendance'),  null,               ['attendances.*']],
+            ['payslips.index',       __('My Payslips'), null,               ['payslips.*']],
         ],
         'crm' => [
             ['crm.index',     __('Pipeline'),  null, ['crm.index', 'crm.leads.*']],
@@ -118,13 +127,21 @@
         ],
     ];
     $nav = $navByModule[$module];
+    // HR reference data lives under a "Settings" dropdown (HR staff only):
+    // [route, label, active-route patterns]. First entry is the settings hub.
+    $hrSettings = $module === 'hr' && $user->can('hr.view_all') ? array_values(array_filter([
+        ['settings.index',       __('Settings'),    ['settings.index']],
+        ['settings.countries',   __('Countries'),   ['settings.countries']],
+        ['departments.index',    __('Departments'), ['departments.*']],
+        ['work-locations.index', __('Offices'),     ['work-locations.*']],
+        $user->can('config.view') ? ['settings.config', __('Configuration'), ['settings.config']] : null,
+    ])) : [];
     $moduleHome = [
         'hr'      => 'dashboard',
         'crm'     => 'crm.index',
         'fleet'   => 'fleet.index',
         'finance' => 'finance.invoices',
     ][$module];
-    $user = Auth::user();
     $rolesPretty = [
         'admin'           => [__('Role: System Admin'),     'bg-rose-50 text-rose-700 ring-rose-200 dark:bg-rose-900/40 dark:text-rose-300 dark:ring-rose-800'],
         'hr_manager'      => [__('Role: HR Manager'),       'bg-brand-50 text-brand-700 ring-brand-200 dark:bg-brand-900/40 dark:text-brand-300 dark:ring-brand-800'],
@@ -174,6 +191,45 @@
                             </a>
                         @endif
                     @endforeach
+
+                    @if ($hrSettings)
+                        @php $settingsActive = request()->routeIs('settings.*', 'departments.*', 'work-locations.*'); @endphp
+                        <div class="relative" id="hr-settings-wrap">
+                            <button type="button" id="hr-settings-button"
+                                    aria-haspopup="true" aria-expanded="false"
+                                    class="inline-flex items-center gap-2 px-2.5 h-9 rounded-md text-sm whitespace-nowrap transition
+                                           {{ $settingsActive
+                                             ? 'bg-brand-50 text-brand-700 font-semibold dark:bg-brand-900/40 dark:text-brand-300'
+                                             : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100' }}">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                     stroke-linecap="round" stroke-linejoin="round" class="ico-sm">
+                                    <circle cx="12" cy="12" r="3"/>
+                                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                                </svg>
+                                <span class="hidden xl:inline">{{ __('Settings') }}</span>
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="ico-sm text-slate-400">
+                                    <path d="m6 9 6 6 6-6"/>
+                                </svg>
+                            </button>
+                            <div id="hr-settings-menu"
+                                 class="hidden absolute start-0 mt-1 w-48 rounded-lg bg-white dark:bg-slate-900 shadow-soft ring-1 ring-slate-200 dark:ring-slate-800 z-30 p-1">
+                                @foreach ($hrSettings as [$rname, $label, $patterns])
+                                    @php $active = request()->routeIs(...$patterns); @endphp
+                                    <a href="{{ route($rname) }}"
+                                       class="flex items-center gap-2 px-3 py-2 text-sm rounded-md transition
+                                              {{ $active
+                                                ? 'bg-brand-50 text-brand-700 font-semibold dark:bg-brand-900/40 dark:text-brand-300'
+                                                : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100' }}">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                             stroke-linecap="round" stroke-linejoin="round" class="ico-sm">
+                                            {!! $icons[$rname] ?? '' !!}
+                                        </svg>
+                                        {{ $label }}
+                                    </a>
+                                @endforeach
+                            </div>
+                        </div>
+                    @endif
                 </nav>
             </div>
 
@@ -298,6 +354,20 @@
                     </a>
                 @endif
             @endforeach
+            {{-- Settings entries stay flat chips on mobile — no room for a dropdown --}}
+            @foreach ($hrSettings as [$rname, $label, $patterns])
+                @php $active = request()->routeIs(...$patterns); @endphp
+                <a href="{{ route($rname) }}"
+                   class="inline-flex items-center gap-1.5 shrink-0 px-2.5 h-8 rounded-md text-xs
+                          {{ $active
+                            ? 'bg-brand-50 text-brand-700 font-semibold dark:bg-brand-900/40 dark:text-brand-300'
+                            : 'text-slate-600 bg-slate-100 dark:text-slate-300 dark:bg-slate-800' }}">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ico-sm">
+                        {!! $icons[$rname] ?? '' !!}
+                    </svg>
+                    {{ $label }}
+                </a>
+            @endforeach
         </nav>
         @endif
     </div>
@@ -330,25 +400,29 @@
 @auth
 <script>
     (function () {
-        const wrap = document.getElementById('user-menu-wrap');
-        const btn  = document.getElementById('user-menu-button');
-        const menu = document.getElementById('user-menu');
-        if (!wrap || !btn || !menu) return;
+        function dropdown(wrapId, btnId, menuId) {
+            const wrap = document.getElementById(wrapId);
+            const btn  = document.getElementById(btnId);
+            const menu = document.getElementById(menuId);
+            if (!wrap || !btn || !menu) return;
 
-        function setOpen(open) {
-            menu.classList.toggle('hidden', !open);
-            btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+            function setOpen(open) {
+                menu.classList.toggle('hidden', !open);
+                btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+            }
+            btn.addEventListener('click', function (e) {
+                e.stopPropagation();
+                setOpen(menu.classList.contains('hidden'));
+            });
+            document.addEventListener('click', function (e) {
+                if (!wrap.contains(e.target)) setOpen(false);
+            });
+            document.addEventListener('keydown', function (e) {
+                if (e.key === 'Escape') setOpen(false);
+            });
         }
-        btn.addEventListener('click', function (e) {
-            e.stopPropagation();
-            setOpen(menu.classList.contains('hidden'));
-        });
-        document.addEventListener('click', function (e) {
-            if (!wrap.contains(e.target)) setOpen(false);
-        });
-        document.addEventListener('keydown', function (e) {
-            if (e.key === 'Escape') setOpen(false);
-        });
+        dropdown('user-menu-wrap', 'user-menu-button', 'user-menu');
+        dropdown('hr-settings-wrap', 'hr-settings-button', 'hr-settings-menu');
     })();
 </script>
 @endauth

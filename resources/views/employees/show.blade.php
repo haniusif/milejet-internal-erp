@@ -3,6 +3,7 @@
 
 @section('content')
 @php $dir = app()->getLocale() === 'ar' ? 'rtl' : 'ltr'; @endphp
+@can('hr.view_all')
 <a href="{{ route('employees.index') }}"
    class="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 mb-4">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ico-sm">
@@ -14,6 +15,7 @@
     </svg>
     {{ __('Back to employees list') }}
 </a>
+@endcan
 
 {{-- Hero profile card --}}
 <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden mb-5">
@@ -65,6 +67,7 @@
                         {{ __('Inactive') }}
                     </span>
                 @endif
+                @can('hr.view_all')
                 <a href="{{ route('employees.org-chart') }}"
                    class="inline-flex items-center gap-1.5 h-9 px-3 rounded-md bg-slate-100 text-slate-700 text-sm font-medium hover:bg-slate-200
                           dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 transition">
@@ -74,6 +77,7 @@
                     </svg>
                     {{ __('Org Chart') }}
                 </a>
+                @endcan
                 @can('employees.write')
                 <a href="{{ route('employees.edit', $employee->id) }}"
                    class="inline-flex items-center gap-1.5 h-9 px-4 rounded-md bg-brand-700 text-white text-sm font-medium hover:bg-brand-800 transition">
@@ -217,12 +221,21 @@
                     <dt class="text-xs text-slate-400 dark:text-slate-500 mb-0.5">{{ __('Direct manager') }}</dt>
                     <dd class="text-slate-900 dark:text-slate-100">
                         @if ($manager)
+                            @can('hr.view_all')
                             <a href="{{ route('employees.show', $manager->id) }}" class="inline-flex items-center gap-2 text-brand-600 dark:text-brand-400 hover:underline">
                                 @if ($manager->avatar_data_uri)
                                     <img src="{{ $manager->avatar_data_uri }}" alt="" class="w-5 h-5 rounded-full object-cover">
                                 @endif
                                 {{ $manager->name }}
                             </a>
+                            @else
+                            <span class="inline-flex items-center gap-2">
+                                @if ($manager->avatar_data_uri)
+                                    <img src="{{ $manager->avatar_data_uri }}" alt="" class="w-5 h-5 rounded-full object-cover">
+                                @endif
+                                {{ $manager->name }}
+                            </span>
+                            @endcan
                         @else
                             {{ $employee->parent_name ?: '—' }}
                         @endif
@@ -236,7 +249,8 @@
                     </dt>
                     <dd class="space-y-1">
                         @foreach ($reports as $r)
-                            <a href="{{ route('employees.show', $r->id) }}"
+                            {{-- href only for HR staff; plain employees see a non-clickable row --}}
+                            <a @can('hr.view_all') href="{{ route('employees.show', $r->id) }}" @endcan
                                class="flex items-center gap-2 py-1 -mx-1 px-1 rounded hover:bg-slate-50 dark:hover:bg-slate-800/50 transition">
                                 @if ($r->avatar_data_uri)
                                     <img src="{{ $r->avatar_data_uri }}" alt="" class="w-6 h-6 rounded-full object-cover ring-1 ring-slate-200 dark:ring-slate-700">

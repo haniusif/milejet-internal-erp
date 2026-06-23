@@ -4,6 +4,8 @@
 @section('content')
     <div class="flex items-center justify-between mb-4">
         <h1 class="text-2xl font-bold">{{ __('Attendance & check-out') }}</h1>
+        <a href="{{ route('attendances.export', request()->query()) }}"
+           class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded text-sm">⬇ {{ __('Export Excel') }}</a>
     </div>
 
     <div class="grid grid-cols-2 gap-4 mb-4">
@@ -19,14 +21,20 @@
 
     <div class="bg-white p-4 rounded shadow mb-4">
         <h2 class="font-semibold mb-3">{{ __('Record new attendance') }}</h2>
-        <form method="POST" action="{{ route('attendances.check-in') }}" class="flex gap-2">
+        <form method="POST" action="{{ route('attendances.check-in') }}" class="flex gap-2 items-center">
             @csrf
-            <select name="employee_id" required class="flex-1 border rounded px-3 py-2 bg-white text-sm">
-                <option value="">{{ __('— Select an employee —') }}</option>
-                @foreach ($employees as $e)
-                    <option value="{{ $e->odoo_id }}">{{ $e->name }}</option>
-                @endforeach
-            </select>
+            @can('hr.view_all')
+                <select name="employee_id" required class="flex-1 border rounded px-3 py-2 bg-white text-sm">
+                    <option value="">{{ __('— Select an employee —') }}</option>
+                    @foreach ($employees as $e)
+                        <option value="{{ $e->odoo_id }}">{{ $e->name }}</option>
+                    @endforeach
+                </select>
+            @else
+                {{-- Plain employees can only check themselves in (enforced server-side too) --}}
+                <input type="hidden" name="employee_id" value="{{ $employees->first()?->odoo_id }}">
+                <span class="flex-1 text-sm font-medium">{{ $employees->first()?->name ?? auth()->user()->name }}</span>
+            @endcan
             <button class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded text-sm">
                 ⏰ {{ __('Check in') }}
             </button>
@@ -34,6 +42,7 @@
     </div>
 
     <form method="GET" class="bg-white p-3 rounded shadow mb-4 flex gap-2 flex-wrap text-sm">
+        @can('hr.view_all')
         <select name="employee_id" class="border rounded px-3 py-2 bg-white">
             <option value="">{{ __('All employees') }}</option>
             @foreach ($employees as $e)
@@ -42,6 +51,7 @@
                 </option>
             @endforeach
         </select>
+        @endcan
         <input type="date" name="date" value="{{ request('date') }}" class="border rounded px-3 py-2">
         <button class="bg-gray-800 text-white px-4 py-2 rounded">{{ __('Filter') }}</button>
         @if (request('employee_id') || request('date'))
@@ -80,11 +90,13 @@
                                     <button class="text-orange-600 hover:underline">{{ __('Check out') }}</button>
                                 </form>
                             @endif
-                            <form action="{{ route('attendances.destroy', $a->id) }}" method="POST"
-                                  class="inline ms-2" onsubmit="return confirm('{{ __('Delete record?') }}')">
-                                @csrf @method('DELETE')
-                                <button class="text-red-600 hover:underline">{{ __('Delete') }}</button>
-                            </form>
+                            @if (auth()->user()->hasAnyRole(['admin', 'hr_manager']))
+                                <form action="{{ route('attendances.destroy', $a->id) }}" method="POST"
+                                      class="inline ms-2" onsubmit="return confirm('{{ __('Delete record?') }}')">
+                                    @csrf @method('DELETE')
+                                    <button class="text-red-600 hover:underline">{{ __('Delete') }}</button>
+                                </form>
+                            @endif
                         </td>
                     </tr>
                 @empty

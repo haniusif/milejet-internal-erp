@@ -12,7 +12,7 @@
             <select name="employee_id" required class="w-full border rounded px-3 py-2 bg-white">
                 <option value="">{{ __('— Select —') }}</option>
                 @foreach ($employees as $e)
-                    <option value="{{ $e->odoo_id }}" {{ (int) old('employee_id') === $e->odoo_id ? 'selected' : '' }}>
+                    <option value="{{ $e->odoo_id }}" {{ (int) old('employee_id') === $e->odoo_id || $employees->count() === 1 ? 'selected' : '' }}>
                         {{ $e->name }}
                     </option>
                 @endforeach

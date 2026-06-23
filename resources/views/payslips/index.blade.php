@@ -5,8 +5,16 @@
 <div class="flex flex-wrap items-end justify-between gap-3 mb-5">
     <div>
         <p class="text-xs uppercase tracking-wider text-slate-400">{{ __('Payroll') }}</p>
-        <h1 class="text-2xl font-bold tracking-tight text-slate-900 mt-1">{{ __('Payslips') }}</h1>
+        <h1 class="text-2xl font-bold tracking-tight text-slate-900 mt-1">{{ auth()->user()->can('payslips.view') ? __('Payslips') : __('My Payslips') }}</h1>
     </div>
+    <div class="flex items-center gap-2">
+    <a href="{{ route('payslips.export', request()->query()) }}"
+       class="inline-flex items-center gap-2 h-9 px-4 rounded-md bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200 text-sm font-medium hover:bg-emerald-100 transition">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ico-sm">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+        </svg>
+        {{ __('Export Excel') }}
+    </a>
     @can('payslips.create')
     <a href="{{ route('payslips.create') }}"
        class="inline-flex items-center gap-2 h-9 px-4 rounded-md bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700 transition shadow-sm">
@@ -16,6 +24,7 @@
         {{ __('Create payslip') }}
     </a>
     @endcan
+    </div>
 </div>
 
 {{-- Summary cards --}}
@@ -37,12 +46,14 @@
 </div>
 
 <form method="GET" class="bg-white border border-slate-200 rounded-xl p-3 mb-5 flex flex-wrap items-center gap-2">
+    @can('payslips.view')
     <select name="employee_id" class="h-9 px-3 border border-slate-200 rounded-md text-sm bg-white">
         <option value="">{{ __('All employees') }}</option>
         @foreach ($employees as $emp)
             <option value="{{ $emp->odoo_id }}" @selected(request('employee_id') == $emp->odoo_id)>{{ $emp->name }}</option>
         @endforeach
     </select>
+    @endcan
     <select name="period" id="period-select" class="h-9 px-3 border border-slate-200 rounded-md text-sm bg-white">
         <option value="">{{ __('All months') }}</option>
         <option value="current" @selected(request('period')=='current')>{{ __('Current month') }}</option>

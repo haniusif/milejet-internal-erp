@@ -1,0 +1,38 @@
+@import "tailwindcss";
+
+/* class-based dark mode (toggled on <html> via the mj_theme cookie) */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* MileJet brand — navy + orange, same palette as the Blade app */
+@theme {
+  --color-brand-50: #f0f6fb;
+  --color-brand-100: #dceaf5;
+  --color-brand-200: #bdd6ea;
+  --color-brand-300: #8fb8d8;
+  --color-brand-400: #5a93c0;
+  --color-brand-500: #3674a6;
+  --color-brand-600: #265c8a;
+  --color-brand-700: #1d4970;
+  --color-brand-800: #14375a;
+  --color-brand-900: #0d2943;
+
+  --color-accent-50: #fef4ec;
+  --color-accent-100: #fde8db;
+  --color-accent-200: #fbd0b5;
+  --color-accent-300: #f7a877;
+  --color-accent-400: #f48144;
+  --color-accent-500: #ef6925;
+  --color-accent-600: #d9571a;
+  --color-accent-700: #b34715;
+  --color-accent-800: #8f3a14;
+  --color-accent-900: #743112;
+
+  --font-sans: var(--font-cairo), var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+
+  --shadow-card: 0 1px 2px rgb(15 23 42 / 0.04), 0 1px 3px rgb(15 23 42 / 0.06);
+  --shadow-soft: 0 4px 12px rgb(15 23 42 / 0.06);
+}
+
+body {
+  -webkit-font-smoothing: antialiased;
+}

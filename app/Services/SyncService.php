@@ -4,7 +4,9 @@ namespace App\Services;
 
 use App\Models\Applicant;
 use App\Models\Attendance;
+use App\Models\Company;
 use App\Models\Contract;
+use App\Models\Country;
 use App\Models\CrmCustomer;
 use App\Models\CrmLead;
 use App\Models\CrmStage;
@@ -19,8 +21,16 @@ use App\Models\FleetVehicleState;
 use App\Models\JobPosition;
 use App\Models\Leave;
 use App\Models\LeaveType;
+use App\Models\Loan;
+use App\Models\LoanLine;
+use App\Models\EmployeeDocument;
 use App\Models\Payslip;
 use App\Models\PayslipLine;
+use App\Models\PayslipPayment;
+use App\Models\SalaryAdjustment;
+use App\Models\ServiceEnd;
+use App\Models\SickLeave;
+use App\Models\Warning;
 use App\Models\RecruitmentStage;
 use App\Models\SyncLog;
 use App\Models\WorkLocation;
@@ -37,6 +47,8 @@ class SyncService
     public function syncAll(): array
     {
         return [
+            'countries'   => $this->syncCountries(),
+            'companies'   => $this->syncCompanies(),
             'work_locations' => $this->syncWorkLocations(),
             'departments' => $this->syncDepartments(),
             'employees'   => $this->syncEmployees(),
@@ -44,7 +56,14 @@ class SyncService
             'leaves'      => $this->syncLeaves(),
             'attendances' => $this->syncAttendances(),
             'contracts'   => $this->syncContracts(),
+            'loans'       => $this->syncLoans(),
+            'salary_adjustments' => $this->syncSalaryAdjustments(),
+            'employee_documents' => $this->syncEmployeeDocuments(),
+            'warnings'    => $this->syncWarnings(),
+            'sick_leaves' => $this->syncSickLeaves(),
+            'service_ends' => $this->syncServiceEnds(),
             'payslips'    => $this->syncPayslips(),
+            'payslip_payments' => $this->syncPayslipPayments(),
             'recruitment' => $this->syncRecruitment(),
             'crm'         => $this->syncCrm(),
             'fleet'       => $this->syncFleet(),
@@ -379,25 +398,60 @@ class SyncService
         return $this->runSync('hr.contract', function () {
             $rows = $this->odoo->searchRead(
                 'hr.contract', [],
-                ['id', 'name', 'employee_id', 'wage', 'date_start', 'date_end', 'state', 'struct_id'],
+                ['id', 'name', 'employee_id', 'wage', 'date_start', 'date_end', 'state', 'struct_id',
+                 'mj_signed', 'mj_signed_date', 'mj_signed_by'],
                 0, 0, 'id asc'
             );
 
             $count = 0;
             foreach ($rows as $row) {
-                Contract::updateOrCreate(
+                Contract::updateOrCreate(['odoo_id' => $row['id']], $this->contractColumns($row));
+                $count++;
+            }
+            return $count;
+        });
+    }
+
+    /** Shared mapping of an Odoo hr.contract row to local columns. */
+    protected function contractColumns(array $row): array
+    {
+        return [
+            'name'             => $row['name'],
+            'odoo_employee_id' => OdooService::many2oneId($row['employee_id']) ?? 0,
+            'employee_name'    => OdooService::many2oneName($row['employee_id']) ?? '—',
+            'wage'             => $row['wage'] ?? 0,
+            'date_start'       => $this->parseOdooDate($row['date_start']),
+            'date_end'         => $this->parseOdooDate($row['date_end']),
+            'state'            => $row['state'] ?? 'draft',
+            'odoo_struct_id'   => OdooService::many2oneId($row['struct_id']),
+            'struct_name'      => OdooService::many2oneName($row['struct_id']),
+            'signed'           => (bool) ($row['mj_signed'] ?? false),
+            'signed_date'      => $this->parseOdooDate($row['mj_signed_date'] ?? false),
+            'signed_by'        => $row['mj_signed_by'] ?: null,
+            'synced_at'        => now(),
+        ];
+    }
+
+    /** Reference data: countries (res.country) — read-only mirror. */
+    public function syncCountries(): SyncLog
+    {
+        return $this->runSync('res.country', function () {
+            $rows = $this->odoo->searchRead(
+                'res.country', [],
+                ['id', 'name', 'code', 'phone_code', 'currency_id'],
+                0, 0, 'name asc'
+            );
+
+            $count = 0;
+            foreach ($rows as $row) {
+                Country::updateOrCreate(
                     ['odoo_id' => $row['id']],
                     [
-                        'name'             => $row['name'],
-                        'odoo_employee_id' => OdooService::many2oneId($row['employee_id']) ?? 0,
-                        'employee_name'    => OdooService::many2oneName($row['employee_id']) ?? '—',
-                        'wage'             => $row['wage'] ?? 0,
-                        'date_start'       => $this->parseOdooDate($row['date_start']),
-                        'date_end'         => $this->parseOdooDate($row['date_end']),
-                        'state'            => $row['state'] ?? 'draft',
-                        'odoo_struct_id'   => OdooService::many2oneId($row['struct_id']),
-                        'struct_name'      => OdooService::many2oneName($row['struct_id']),
-                        'synced_at'        => now(),
+                        'name'          => $row['name'],
+                        'code'          => $row['code'] ?: null,
+                        'phone_code'    => $row['phone_code'] ?: null,
+                        'currency_name' => OdooService::many2oneName($row['currency_id']),
+                        'synced_at'     => now(),
                     ]
                 );
                 $count++;
@@ -406,12 +460,402 @@ class SyncService
         });
     }
 
+    public function syncCompanies(): SyncLog
+    {
+        return $this->runSync('res.company', function () {
+            $rows = $this->odoo->searchRead(
+                'res.company', [['active', 'in', [true, false]]],
+                ['id', 'name', 'parent_id', 'company_registry', 'vat',
+                 'phone', 'email', 'city', 'country_id', 'active'],
+                0, 0, 'id asc'
+            );
+
+            $count = 0;
+            foreach ($rows as $row) {
+                $this->writeCompany($row);
+                $count++;
+            }
+            return $count;
+        });
+    }
+
+    protected function writeCompany(array $row): Company
+    {
+        return Company::updateOrCreate(
+            ['odoo_id' => $row['id']],
+            [
+                'name'             => $row['name'],
+                'odoo_parent_id'   => OdooService::many2oneId($row['parent_id']),
+                'parent_name'      => OdooService::many2oneName($row['parent_id']),
+                'company_registry' => $row['company_registry'] ?: null,
+                'vat'              => $row['vat'] ?: null,
+                'phone'            => $row['phone'] ?: null,
+                'email'            => $row['email'] ?: null,
+                'city'             => $row['city'] ?: null,
+                'country_name'     => OdooService::many2oneName($row['country_id']),
+                'active'           => (bool) ($row['active'] ?? true),
+                'synced_at'        => now(),
+            ]
+        );
+    }
+
+    public function refreshCompany(int $odooId): ?Company
+    {
+        try {
+            $rows = $this->odoo->read('res.company', [$odooId],
+                ['id', 'name', 'parent_id', 'company_registry', 'vat',
+                 'phone', 'email', 'city', 'country_id', 'active']);
+            return empty($rows) ? null : $this->writeCompany($rows[0]);
+        } catch (Throwable) {
+            return null;
+        }
+    }
+
+    public function syncLoans(): SyncLog
+    {
+        return $this->runSync('hr.loan', function () {
+            $rows = $this->odoo->searchRead(
+                'hr.loan', [],
+                ['id', 'name', 'employee_id', 'date', 'amount', 'installment',
+                 'reason', 'state', 'repaid_amount', 'balance'],
+                0, 0, 'id asc'
+            );
+
+            $count = 0;
+            foreach ($rows as $row) {
+                $this->writeLoan($row);
+                $count++;
+            }
+
+            // Repayment lines (full mirror — volumes are tiny)
+            $lines = $this->odoo->searchRead(
+                'hr.loan.line', [],
+                ['id', 'loan_id', 'date', 'amount', 'note'],
+                0, 0, 'id asc'
+            );
+            $seen = [];
+            foreach ($lines as $line) {
+                $seen[] = $line['id'];
+                LoanLine::updateOrCreate(
+                    ['odoo_id' => $line['id']],
+                    [
+                        'odoo_loan_id' => OdooService::many2oneId($line['loan_id']) ?? 0,
+                        'date'         => $this->parseOdooDate($line['date']),
+                        'amount'       => $line['amount'] ?? 0,
+                        'note'         => $line['note'] ?: null,
+                        'synced_at'    => now(),
+                    ]
+                );
+            }
+            // Lines deleted in Odoo disappear locally too (cascade deletes are common here).
+            LoanLine::whereNotIn('odoo_id', $seen)->delete();
+
+            return $count;
+        });
+    }
+
+    protected function writeLoan(array $row): Loan
+    {
+        return Loan::updateOrCreate(
+            ['odoo_id' => $row['id']],
+            [
+                'name'             => $row['name'] ?: null,
+                'odoo_employee_id' => OdooService::many2oneId($row['employee_id']) ?? 0,
+                'employee_name'    => OdooService::many2oneName($row['employee_id']) ?? '—',
+                'date'             => $this->parseOdooDate($row['date']),
+                'amount'           => $row['amount'] ?? 0,
+                'installment'      => $row['installment'] ?? 0,
+                'reason'           => $row['reason'] ?: null,
+                'state'            => $row['state'] ?? 'draft',
+                'repaid_amount'    => $row['repaid_amount'] ?? 0,
+                'balance'          => $row['balance'] ?? 0,
+                'synced_at'        => now(),
+            ]
+        );
+    }
+
+    public function refreshLoan(int $odooId): ?Loan
+    {
+        try {
+            $rows = $this->odoo->read('hr.loan', [$odooId],
+                ['id', 'name', 'employee_id', 'date', 'amount', 'installment',
+                 'reason', 'state', 'repaid_amount', 'balance']);
+            if (empty($rows)) return null;
+            $loan = $this->writeLoan($rows[0]);
+
+            $lines = $this->odoo->searchRead('hr.loan.line', [['loan_id', '=', $odooId]],
+                ['id', 'loan_id', 'date', 'amount', 'note'], 0, 0, 'id asc');
+            $seen = [];
+            foreach ($lines as $line) {
+                $seen[] = $line['id'];
+                LoanLine::updateOrCreate(
+                    ['odoo_id' => $line['id']],
+                    [
+                        'odoo_loan_id' => $odooId,
+                        'date'         => $this->parseOdooDate($line['date']),
+                        'amount'       => $line['amount'] ?? 0,
+                        'note'         => $line['note'] ?: null,
+                        'synced_at'    => now(),
+                    ]
+                );
+            }
+            LoanLine::where('odoo_loan_id', $odooId)->whereNotIn('odoo_id', $seen)->delete();
+
+            return $loan;
+        } catch (Throwable) {
+            return null;
+        }
+    }
+
+    /** Salary adjustments (penalties / deductions / rewards / allowances) — full mirror, volumes are small. */
+    public function syncSalaryAdjustments(): SyncLog
+    {
+        return $this->runSync('hr.salary.adjustment', function () {
+            $rows = $this->odoo->searchRead(
+                'hr.salary.adjustment', [],
+                ['id', 'name', 'employee_id', 'kind', 'date', 'amount', 'reason', 'state'],
+                0, 0, 'id asc'
+            );
+            $seen = [];
+            foreach ($rows as $row) {
+                $seen[] = $row['id'];
+                $this->writeSalaryAdjustment($row);
+            }
+            // Adjustments deleted in Odoo disappear locally too.
+            SalaryAdjustment::whereNotIn('odoo_id', $seen)->delete();
+            return count($rows);
+        });
+    }
+
+    protected function writeSalaryAdjustment(array $row): SalaryAdjustment
+    {
+        return SalaryAdjustment::updateOrCreate(
+            ['odoo_id' => $row['id']],
+            [
+                'name'             => $row['name'] ?: null,
+                'odoo_employee_id' => OdooService::many2oneId($row['employee_id']) ?? 0,
+                'employee_name'    => OdooService::many2oneName($row['employee_id']) ?? '—',
+                'kind'             => $row['kind'] ?? 'penalty',
+                'date'             => $this->parseOdooDate($row['date']),
+                'amount'           => $row['amount'] ?? 0,
+                'reason'           => $row['reason'] ?: null,
+                'state'            => $row['state'] ?? 'draft',
+                'synced_at'        => now(),
+            ]
+        );
+    }
+
+    public function refreshSalaryAdjustment(int $odooId): ?SalaryAdjustment
+    {
+        try {
+            $rows = $this->odoo->read('hr.salary.adjustment', [$odooId],
+                ['id', 'name', 'employee_id', 'kind', 'date', 'amount', 'reason', 'state']);
+            return empty($rows) ? null : $this->writeSalaryAdjustment($rows[0]);
+        } catch (Throwable) {
+            return null;
+        }
+    }
+
+    /** Employee documents — metadata only (the file bytes stay in Odoo's filestore). */
+    public function syncEmployeeDocuments(): SyncLog
+    {
+        return $this->runSync('hr.employee.document', function () {
+            $rows = $this->odoo->searchRead(
+                'hr.employee.document', [],
+                ['id', 'name', 'employee_id', 'category', 'filename', 'mimetype',
+                 'issue_date', 'expiry_date', 'note'],
+                0, 0, 'id asc'
+            );
+            $seen = [];
+            foreach ($rows as $row) {
+                $seen[] = $row['id'];
+                $this->writeEmployeeDocument($row);
+            }
+            EmployeeDocument::whereNotIn('odoo_id', $seen)->delete();
+            return count($rows);
+        });
+    }
+
+    protected function writeEmployeeDocument(array $row): EmployeeDocument
+    {
+        return EmployeeDocument::updateOrCreate(
+            ['odoo_id' => $row['id']],
+            [
+                'odoo_employee_id' => OdooService::many2oneId($row['employee_id']) ?? 0,
+                'employee_name'    => OdooService::many2oneName($row['employee_id']) ?? '—',
+                'name'             => $row['name'] ?: null,
+                'category'         => $row['category'] ?? 'other',
+                'filename'         => $row['filename'] ?: null,
+                'mimetype'         => $row['mimetype'] ?: null,
+                'issue_date'       => $this->parseOdooDate($row['issue_date']),
+                'expiry_date'      => $this->parseOdooDate($row['expiry_date']),
+                'note'             => $row['note'] ?: null,
+                'synced_at'        => now(),
+            ]
+        );
+    }
+
+    public function refreshEmployeeDocument(int $odooId): ?EmployeeDocument
+    {
+        try {
+            $rows = $this->odoo->read('hr.employee.document', [$odooId],
+                ['id', 'name', 'employee_id', 'category', 'filename', 'mimetype',
+                 'issue_date', 'expiry_date', 'note']);
+            return empty($rows) ? null : $this->writeEmployeeDocument($rows[0]);
+        } catch (Throwable) {
+            return null;
+        }
+    }
+
+    // ─── HR Forms (mj_hr_forms addon) — full mirrors, volumes are small ───
+
+    public function syncWarnings(): SyncLog
+    {
+        return $this->runSync('hr.warning', function () {
+            $rows = $this->odoo->searchRead('hr.warning', [],
+                ['id', 'name', 'employee_id', 'warning_type', 'date', 'subject', 'description', 'state'],
+                0, 0, 'id asc');
+            $seen = [];
+            foreach ($rows as $row) {
+                $seen[] = $row['id'];
+                Warning::updateOrCreate(['odoo_id' => $row['id']], [
+                    'odoo_employee_id' => OdooService::many2oneId($row['employee_id']) ?? 0,
+                    'employee_name'    => OdooService::many2oneName($row['employee_id']) ?? '—',
+                    'name'         => $row['name'] ?: null,
+                    'warning_type' => $row['warning_type'] ?? 'first',
+                    'date'         => $this->parseOdooDate($row['date']),
+                    'subject'      => $row['subject'] ?: null,
+                    'description'  => $row['description'] ?: null,
+                    'state'        => $row['state'] ?? 'draft',
+                    'synced_at'    => now(),
+                ]);
+            }
+            Warning::whereNotIn('odoo_id', $seen)->delete();
+            return count($rows);
+        });
+    }
+
+    public function syncSickLeaves(): SyncLog
+    {
+        return $this->runSync('hr.sick.leave', function () {
+            $rows = $this->odoo->searchRead('hr.sick.leave', [],
+                ['id', 'name', 'employee_id', 'date_from', 'date_to', 'days', 'diagnosis',
+                 'doctor_name', 'facility', 'note', 'state'],
+                0, 0, 'id asc');
+            $seen = [];
+            foreach ($rows as $row) {
+                $seen[] = $row['id'];
+                SickLeave::updateOrCreate(['odoo_id' => $row['id']], [
+                    'odoo_employee_id' => OdooService::many2oneId($row['employee_id']) ?? 0,
+                    'employee_name'    => OdooService::many2oneName($row['employee_id']) ?? '—',
+                    'name'        => $row['name'] ?: null,
+                    'date_from'   => $this->parseOdooDate($row['date_from']),
+                    'date_to'     => $this->parseOdooDate($row['date_to']),
+                    'days'        => $row['days'] ?? 0,
+                    'diagnosis'   => $row['diagnosis'] ?: null,
+                    'doctor_name' => $row['doctor_name'] ?: null,
+                    'facility'    => $row['facility'] ?: null,
+                    'note'        => $row['note'] ?: null,
+                    'state'       => $row['state'] ?? 'draft',
+                    'synced_at'   => now(),
+                ]);
+            }
+            SickLeave::whereNotIn('odoo_id', $seen)->delete();
+            return count($rows);
+        });
+    }
+
+    public function syncServiceEnds(): SyncLog
+    {
+        return $this->runSync('hr.service.end', function () {
+            $rows = $this->odoo->searchRead('hr.service.end', [],
+                ['id', 'name', 'employee_id', 'reason', 'last_working_day', 'notice_served',
+                 'custody_returned', 'custody_note', 'settlement_amount', 'clearance_note', 'state'],
+                0, 0, 'id asc');
+            $seen = [];
+            foreach ($rows as $row) {
+                $seen[] = $row['id'];
+                ServiceEnd::updateOrCreate(['odoo_id' => $row['id']], [
+                    'odoo_employee_id' => OdooService::many2oneId($row['employee_id']) ?? 0,
+                    'employee_name'    => OdooService::many2oneName($row['employee_id']) ?? '—',
+                    'name'             => $row['name'] ?: null,
+                    'reason'           => $row['reason'] ?? 'resignation',
+                    'last_working_day' => $this->parseOdooDate($row['last_working_day']),
+                    'notice_served'    => (bool) ($row['notice_served'] ?? false),
+                    'custody_returned' => (bool) ($row['custody_returned'] ?? false),
+                    'custody_note'     => $row['custody_note'] ?: null,
+                    'settlement_amount' => $row['settlement_amount'] ?? 0,
+                    'clearance_note'   => $row['clearance_note'] ?: null,
+                    'state'            => $row['state'] ?? 'draft',
+                    'synced_at'        => now(),
+                ]);
+            }
+            ServiceEnd::whereNotIn('odoo_id', $seen)->delete();
+            return count($rows);
+        });
+    }
+
+    /** Full mirror of every payslip payment (volumes are tiny). */
+    public function syncPayslipPayments(): SyncLog
+    {
+        return $this->runSync('hr.payslip.payment', function () {
+            $rows = $this->odoo->searchRead(
+                'hr.payslip.payment', [],
+                ['id', 'payslip_id', 'date', 'amount', 'method', 'reference', 'note'],
+                0, 0, 'id asc'
+            );
+            $seen = [];
+            foreach ($rows as $line) {
+                $seen[] = $line['id'];
+                PayslipPayment::updateOrCreate(
+                    ['odoo_id' => $line['id']],
+                    [
+                        'odoo_payslip_id' => OdooService::many2oneId($line['payslip_id']) ?? 0,
+                        'date'            => $this->parseOdooDate($line['date']),
+                        'amount'          => $line['amount'] ?? 0,
+                        'method'          => $line['method'] ?: null,
+                        'reference'       => $line['reference'] ?: null,
+                        'note'            => $line['note'] ?: null,
+                        'synced_at'       => now(),
+                    ]
+                );
+            }
+            PayslipPayment::whereNotIn('odoo_id', $seen)->delete();
+            return count($rows);
+        });
+    }
+
+    /** Payslip payments — refreshed per-payslip after a write (and as part of a full sync). */
+    public function refreshPayslipPayments(int $payslipOdooId): void
+    {
+        $lines = $this->odoo->searchRead('hr.payslip.payment', [['payslip_id', '=', $payslipOdooId]],
+            ['id', 'payslip_id', 'date', 'amount', 'method', 'reference', 'note'], 0, 0, 'id asc');
+        $seen = [];
+        foreach ($lines as $line) {
+            $seen[] = $line['id'];
+            PayslipPayment::updateOrCreate(
+                ['odoo_id' => $line['id']],
+                [
+                    'odoo_payslip_id' => $payslipOdooId,
+                    'date'            => $this->parseOdooDate($line['date']),
+                    'amount'          => $line['amount'] ?? 0,
+                    'method'          => $line['method'] ?: null,
+                    'reference'       => $line['reference'] ?: null,
+                    'note'            => $line['note'] ?: null,
+                    'synced_at'       => now(),
+                ]
+            );
+        }
+        PayslipPayment::where('odoo_payslip_id', $payslipOdooId)->whereNotIn('odoo_id', $seen)->delete();
+    }
+
     public function syncPayslips(): SyncLog
     {
         return $this->runSync('hr.payslip', function () {
             $rows = $this->odoo->searchRead(
                 'hr.payslip', [],
-                ['id', 'number', 'employee_id', 'contract_id', 'date_from', 'date_to', 'state', 'line_ids'],
+                ['id', 'number', 'employee_id', 'contract_id', 'date_from', 'date_to', 'state', 'line_ids',
+                 'payment_status', 'amount_paid', 'amount_due', 'employee_confirmed'],
                 500, 0, 'id desc'
             );
 
@@ -441,7 +885,8 @@ class SyncService
         try {
             $rows = $this->odoo->searchRead(
                 'hr.payslip', [['id', '=', $odooId]],
-                ['id', 'number', 'employee_id', 'contract_id', 'date_from', 'date_to', 'state', 'line_ids'],
+                ['id', 'number', 'employee_id', 'contract_id', 'date_from', 'date_to', 'state', 'line_ids',
+                 'payment_status', 'amount_paid', 'amount_due', 'employee_confirmed'],
                 1
             );
             if (empty($rows)) return null;
@@ -484,6 +929,10 @@ class SyncService
                 'gross_total'      => $totals['GROSS'],
                 'deduction_total'  => $totals['DED'],
                 'net_total'        => $totals['NET'],
+                'payment_status'   => $row['payment_status'] ?? 'unpaid',
+                'amount_paid'      => $row['amount_paid'] ?? 0,
+                'amount_due'       => $row['amount_due'] ?? 0,
+                'employee_confirmed' => (bool) ($row['employee_confirmed'] ?? false),
                 'synced_at'        => now(),
             ]
         );
@@ -522,25 +971,11 @@ class SyncService
     {
         try {
             $rows = $this->odoo->read('hr.contract', [$odooId],
-                ['id', 'name', 'employee_id', 'wage', 'date_start', 'date_end', 'state', 'struct_id']);
+                ['id', 'name', 'employee_id', 'wage', 'date_start', 'date_end', 'state', 'struct_id',
+                 'mj_signed', 'mj_signed_date', 'mj_signed_by']);
             if (empty($rows)) return null;
-            $row = $rows[0];
 
-            return Contract::updateOrCreate(
-                ['odoo_id' => $row['id']],
-                [
-                    'name'             => $row['name'],
-                    'odoo_employee_id' => OdooService::many2oneId($row['employee_id']) ?? 0,
-                    'employee_name'    => OdooService::many2oneName($row['employee_id']) ?? '—',
-                    'wage'             => $row['wage'] ?? 0,
-                    'date_start'       => $this->parseOdooDate($row['date_start']),
-                    'date_end'         => $this->parseOdooDate($row['date_end']),
-                    'state'            => $row['state'] ?? 'draft',
-                    'odoo_struct_id'   => OdooService::many2oneId($row['struct_id']),
-                    'struct_name'      => OdooService::many2oneName($row['struct_id']),
-                    'synced_at'        => now(),
-                ]
-            );
+            return Contract::updateOrCreate(['odoo_id' => $rows[0]['id']], $this->contractColumns($rows[0]));
         } catch (Throwable) {
             return null;
         }
@@ -629,11 +1064,13 @@ class SyncService
     public function syncEmployees(): SyncLog
     {
         return $this->runSync('hr.employee', function () {
+            // active in [true,false]: Odoo hides archived records by default —
+            // without this, employees archived in Odoo stay "active" locally.
             $rows = $this->odoo->searchRead(
-                'hr.employee', [],
+                'hr.employee', [['active', 'in', [true, false]]],
                 ['id', 'name', 'job_title', 'work_email', 'work_phone',
                  'mobile_phone', 'department_id', 'parent_id', 'work_location_id',
-                 'active', 'image_128'],
+                 'company_id', 'active', 'image_128'],
                 0, 0, 'id asc'
             );
 
@@ -653,6 +1090,8 @@ class SyncService
                         'parent_name'        => OdooService::many2oneName($row['parent_id']),
                         'odoo_work_location_id' => OdooService::many2oneId($row['work_location_id']),
                         'work_location_name'    => OdooService::many2oneName($row['work_location_id']),
+                        'odoo_company_id'    => OdooService::many2oneId($row['company_id']),
+                        'company_name'       => OdooService::many2oneName($row['company_id']),
                         'active'             => (bool) ($row['active'] ?? true),
                         'image_small'        => is_string($row['image_128'] ?? null) ? $row['image_128'] : null,
                         'synced_at'          => now(),
@@ -793,7 +1232,7 @@ class SyncService
             $rows = $this->odoo->read('hr.employee', [$odooId],
                 ['id', 'name', 'job_title', 'work_email', 'work_phone',
                  'mobile_phone', 'department_id', 'parent_id', 'work_location_id',
-                 'active', 'image_128']);
+                 'company_id', 'active', 'image_128']);
             if (empty($rows)) return null;
             $row = $rows[0];
 
@@ -811,6 +1250,8 @@ class SyncService
                     'parent_name'        => OdooService::many2oneName($row['parent_id']),
                     'odoo_work_location_id' => OdooService::many2oneId($row['work_location_id']),
                     'work_location_name'    => OdooService::many2oneName($row['work_location_id']),
+                    'odoo_company_id'    => OdooService::many2oneId($row['company_id']),
+                    'company_name'       => OdooService::many2oneName($row['company_id']),
                     'active'             => (bool) ($row['active'] ?? true),
                     'image_small'        => is_string($row['image_128'] ?? null) ? $row['image_128'] : null,
                     'synced_at'          => now(),

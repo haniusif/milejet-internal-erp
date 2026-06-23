@@ -362,13 +362,16 @@ class MobileApiController extends Controller
 
     public function attendanceConfig(Request $request): JsonResponse
     {
-        $fence = $this->resolveGeofence($request->user()->odoo_employee_id);
+        $odooEmployeeId = $request->user()->odoo_employee_id;
+        $fence = $this->resolveGeofence($odooEmployeeId);
+        $exempt = $this->geofenceExempt($odooEmployeeId);
 
         return response()->json([
             'latitude'    => $fence['lat'],
             'longitude'   => $fence['lng'],
             'radius'      => $fence['radius'],
-            'enforce'     => (bool) config('attendance.geofence_enforce'),
+            'enforce'     => (bool) config('attendance.geofence_enforce') && !$exempt,
+            'exempt'      => $exempt,
             'office_name' => $fence['name'],
         ]);
     }
@@ -624,9 +627,19 @@ class MobileApiController extends Controller
      * geofence policy, or null if the punch is allowed. Validates against the
      * employee's assigned office when one is configured.
      */
+    /** True when this employee may punch from anywhere (per-employee bypass). */
+    private function geofenceExempt(?int $odooEmployeeId): bool
+    {
+        return $odooEmployeeId
+            && Employee::where('odoo_id', $odooEmployeeId)->value('geofence_exempt');
+    }
+
     private function geofenceError($lat, $lng, ?int $odooEmployeeId = null): ?string
     {
         if (!config('attendance.geofence_enforce')) {
+            return null;
+        }
+        if ($this->geofenceExempt($odooEmployeeId)) {
             return null;
         }
 

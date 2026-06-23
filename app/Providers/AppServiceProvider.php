@@ -19,6 +19,10 @@ class AppServiceProvider extends ServiceProvider
         // Admin always wins (Gate::before doesn't exist in this app, so we
         // include admin explicitly in each list — clearer for blade @can).
         $gateMap = [
+            // HR staff see everyone's HR data; plain 'employee' users are
+            // scoped to their own profile, leaves, attendance and payslips.
+            'hr.view_all'       => ['admin', 'hr_manager', 'hr_officer', 'payroll_manager',
+                                    'payroll_officer', 'leave_manager', 'recruitment_manager', 'recruitment_officer'],
             'employees.write'   => ['admin', 'hr_manager', 'hr_officer'],
             'employees.delete'  => ['admin', 'hr_manager'],
             'departments.write' => ['admin', 'hr_manager'],
@@ -33,7 +37,12 @@ class AppServiceProvider extends ServiceProvider
             'payslips.view'     => ['admin', 'payroll_manager', 'payroll_officer', 'hr_manager'],
             'payslips.create'   => ['admin', 'payroll_manager', 'payroll_officer'],
             'payslips.delete'   => ['admin', 'payroll_manager'],
+            'loans.view'        => ['admin', 'hr_manager', 'hr_officer', 'payroll_manager', 'payroll_officer'],
+            'loans.manage'      => ['admin', 'hr_manager', 'payroll_manager'],
+            'companies.manage'  => ['admin', 'hr_manager'],
             'sync.run'          => ['admin', 'hr_manager', 'payroll_manager'],
+            // System configuration (Odoo connection, domains, defaults) — read-only view
+            'config.view'       => ['admin'],
             'recruitment.view'  => ['admin', 'hr_manager', 'hr_officer', 'recruitment_manager', 'recruitment_officer'],
             'recruitment.write' => ['admin', 'hr_manager', 'recruitment_manager', 'recruitment_officer'],
             'crm.view'          => ['admin', 'crm_manager', 'crm_user'],

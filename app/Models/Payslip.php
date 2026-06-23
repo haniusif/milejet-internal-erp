@@ -19,6 +19,9 @@ class Payslip extends Model
         'gross_total'      => 'decimal:2',
         'deduction_total'  => 'decimal:2',
         'net_total'        => 'decimal:2',
+        'amount_paid'      => 'decimal:2',
+        'amount_due'       => 'decimal:2',
+        'employee_confirmed' => 'boolean',
     ];
 
     public function employee(): BelongsTo
@@ -34,6 +37,11 @@ class Payslip extends Model
     public function lines(): HasMany
     {
         return $this->hasMany(PayslipLine::class, 'odoo_payslip_id', 'odoo_id')->orderBy('sequence');
+    }
+
+    public function payments(): HasMany
+    {
+        return $this->hasMany(PayslipPayment::class, 'odoo_payslip_id', 'odoo_id')->orderByDesc('date');
     }
 
     public function stateLabel(): string

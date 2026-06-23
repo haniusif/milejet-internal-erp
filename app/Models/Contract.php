@@ -10,10 +10,12 @@ class Contract extends Model
     protected $guarded = ['id'];
 
     protected $casts = [
-        'date_start' => 'date',
-        'date_end'   => 'date',
-        'wage'       => 'decimal:2',
-        'synced_at'  => 'datetime',
+        'date_start'  => 'date',
+        'date_end'    => 'date',
+        'wage'        => 'decimal:2',
+        'signed'      => 'boolean',
+        'signed_date' => 'datetime',
+        'synced_at'   => 'datetime',
     ];
 
     public function employee(): BelongsTo

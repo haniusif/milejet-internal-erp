@@ -1,0 +1,47 @@
+# crm.milejet.space → 301 to the SPA's crm module on portal.milejet.space
+#
+# Since 2026-06-05 the SPA on portal.milejet.space is the user-facing app.
+# Blade crm paths (/crm, /crm/...) match the SPA's paths 1:1, so deep
+# links survive. /api and /sanctum still hit Laravel on this host for any
+# API clients. Legacy Blade UI remains reachable at erp.milejet.space.
+#
+# Install:
+#   sudo cp deploy/nginx/crm.milejet.space.spa /etc/nginx/sites-available/crm.milejet.space
+#   sudo nginx -t && sudo systemctl reload nginx
+# Roll back: restore /etc/nginx/sites-available/crm.milejet.space.blade.bak
+
+server {
+    server_name crm.milejet.space;
+
+    root /var/www/milejet-internal-erp/public;
+    client_max_body_size 100M;
+
+    location /api/ {
+        try_files $uri /index.php?$query_string;
+    }
+    location /sanctum/ {
+        try_files $uri /index.php?$query_string;
+    }
+    location = /index.php {
+        include snippets/fastcgi-php.conf;
+        fastcgi_pass unix:/run/php/php8.4-fpm.sock;
+    }
+
+    location = / {
+        return 301 https://portal.milejet.space/crm;
+    }
+    location / {
+        return 301 https://portal.milejet.space$request_uri;
+    }
+
+    listen 443 ssl;
+    ssl_certificate /etc/letsencrypt/live/crm.milejet.space/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/crm.milejet.space/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+}
+server {
+    listen 80;
+    server_name crm.milejet.space;
+    return 301 https://$host$request_uri;
+}

@@ -3,9 +3,13 @@
 
 @section('content')
     <div class="flex items-center justify-between mb-4">
-        <h1 class="text-2xl font-bold">{{ __('Leaves') }} ({{ $leaves->total() }})</h1>
-        <a href="{{ route('leaves.create') }}"
-           class="bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded text-sm">+ {{ __('New request') }}</a>
+        <h1 class="text-2xl font-bold">{{ auth()->user()->can('hr.view_all') ? __('Leaves') : __('My Leaves') }} ({{ $leaves->total() }})</h1>
+        <div class="flex items-center gap-2">
+            <a href="{{ route('leaves.export', request()->query()) }}"
+               class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded text-sm">⬇ {{ __('Export Excel') }}</a>
+            <a href="{{ route('leaves.create') }}"
+               class="bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded text-sm">+ {{ __('New request') }}</a>
+        </div>
     </div>
 
     <div class="bg-white p-3 rounded shadow mb-4 flex flex-wrap gap-2 text-sm">
@@ -75,21 +79,30 @@
                             @endforelse
                         </td>
                         <td class="px-3 py-2 text-end whitespace-nowrap">
-                            @if (in_array($l->state, ['draft', 'confirm']))
-                                <form action="{{ route('leaves.approve', $l->id) }}" method="POST" class="inline">
-                                    @csrf
-                                    <button class="text-green-600 hover:underline">{{ __('Approve') }}</button>
+                            @can('leaves.approve')
+                                @if (in_array($l->state, ['draft', 'confirm']))
+                                    <form action="{{ route('leaves.approve', $l->id) }}" method="POST" class="inline">
+                                        @csrf
+                                        <button class="text-green-600 hover:underline">{{ __('Approve') }}</button>
+                                    </form>
+                                    <form action="{{ route('leaves.refuse', $l->id) }}" method="POST" class="inline ms-2">
+                                        @csrf
+                                        <button class="text-orange-600 hover:underline">{{ __('Refuse') }}</button>
+                                    </form>
+                                @endif
+                            @endcan
+                            @can('leaves.delete')
+                                <form action="{{ route('leaves.destroy', $l->id) }}" method="POST"
+                                      class="inline ms-2" onsubmit="return confirm('{{ __('Delete?') }}')">
+                                    @csrf @method('DELETE')
+                                    <button class="text-red-600 hover:underline">{{ __('Delete') }}</button>
                                 </form>
-                                <form action="{{ route('leaves.refuse', $l->id) }}" method="POST" class="inline ms-2">
-                                    @csrf
-                                    <button class="text-orange-600 hover:underline">{{ __('Refuse') }}</button>
-                                </form>
-                            @endif
-                            <form action="{{ route('leaves.destroy', $l->id) }}" method="POST"
-                                  class="inline ms-2" onsubmit="return confirm('{{ __('Delete?') }}')">
-                                @csrf @method('DELETE')
-                                <button class="text-red-600 hover:underline">{{ __('Delete') }}</button>
-                            </form>
+                            @endcan
+                            @cannot('leaves.approve')
+                                @cannot('leaves.delete')
+                                    <span class="text-gray-400">—</span>
+                                @endcannot
+                            @endcannot
                         </td>
                     </tr>
                 @empty

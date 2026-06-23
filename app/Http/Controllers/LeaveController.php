@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Employee;
 use App\Models\Leave;
 use App\Models\LeaveType;
+use App\Services\ExcelExport;
 use App\Services\OdooService;
 use App\Services\SyncService;
 use Illuminate\Http\Request;
@@ -19,18 +20,11 @@ class LeaveController extends Controller
 
     public function index(Request $request)
     {
-        $query = Leave::query();
-
-        if ($state = $request->get('state')) {
-            $query->where('state', $state);
-        }
-
-        if ($empId = $request->get('employee_id')) {
-            $query->where('odoo_employee_id', $empId);
-        }
-
-        $leaves = $query->orderByDesc('odoo_id')->paginate(20)->withQueryString();
-        $employees = Employee::where('active', true)->orderBy('name')->get();
+        $user = $request->user();
+        $leaves = $this->filteredQuery($request)->paginate(20)->withQueryString();
+        $employees = $user->can('hr.view_all')
+            ? Employee::where('active', true)->orderBy('name')->get()
+            : collect();
 
         // [hr.leave odoo id => [{id, name, mimetype}, ...]] for the current page.
         $attachments = $this->attachmentsFor(
@@ -40,11 +34,51 @@ class LeaveController extends Controller
         return view('leaves.index', compact('leaves', 'employees', 'attachments'));
     }
 
+    /** Same dataset as index (own-records scoping + filters), as an .xlsx download. */
+    public function export(Request $request)
+    {
+        $rows = $this->filteredQuery($request)->get()->map(fn ($l) => [
+            $l->odoo_id,
+            $l->employee_name,
+            $l->leave_type_name,
+            $l->date_from?->format('Y-m-d'),
+            $l->date_to?->format('Y-m-d'),
+            $l->number_of_days,
+            $l->stateLabel(),
+            $l->description,
+        ]);
+
+        return ExcelExport::download('leaves-' . now()->format('Y-m-d') . '.xlsx', [
+            '#', __('Employee'), __('Type'), __('From'), __('To'),
+            __('Days'), __('Status'), __('Description'),
+        ], $rows);
+    }
+
+    /** Leave query scoped to the current user, with the index page's filters applied. */
+    private function filteredQuery(Request $request)
+    {
+        $query = Leave::query();
+
+        // Plain employees only see their own requests.
+        $user = $request->user();
+        if (!$user->can('hr.view_all')) {
+            $query->where('odoo_employee_id', $user->employeeRecord()?->odoo_id ?? -1);
+        } elseif ($empId = $request->get('employee_id')) {
+            $query->where('odoo_employee_id', $empId);
+        }
+
+        if ($state = $request->get('state')) {
+            $query->where('state', $state);
+        }
+
+        return $query->orderByDesc('odoo_id');
+    }
+
     /**
      * Turns a raw Odoo fault message into a friendly, translatable one for the
      * dashboard. Falls back to the original (minus the technical prefix).
      */
-    private function friendlyOdooError(string $raw): string
+    public static function friendlyOdooError(string $raw): string
     {
         $lower = strtolower($raw);
 
@@ -98,7 +132,7 @@ class LeaveController extends Controller
     {
         try {
             $rows = $this->odoo->useServiceAccount()->read('ir.attachment', [$id],
-                ['name', 'mimetype', 'res_model', 'datas']);
+                ['name', 'mimetype', 'res_model', 'res_id', 'datas']);
         } catch (\Throwable $e) {
             abort(404);
         }
@@ -106,6 +140,16 @@ class LeaveController extends Controller
             abort(404);
         }
         $att = $rows[0];
+
+        // Plain employees can only open attachments on their own leaves.
+        $user = auth()->user();
+        if (!$user->can('hr.view_all')) {
+            $resId = is_array($att['res_id'] ?? null) ? ($att['res_id'][0] ?? null) : ($att['res_id'] ?? null);
+            $owns = $resId && Leave::where('odoo_id', $resId)
+                ->where('odoo_employee_id', $user->employeeRecord()?->odoo_id ?? -1)
+                ->exists();
+            abort_unless($owns, 403);
+        }
 
         return response(base64_decode($att['datas']), 200, [
             'Content-Type'        => $att['mimetype'] ?: 'application/octet-stream',
@@ -115,7 +159,16 @@ class LeaveController extends Controller
 
     public function create()
     {
-        $employees = Employee::where('active', true)->orderBy('name')->get();
+        // Plain employees can only request leave for themselves.
+        $user = auth()->user();
+        if (!$user->can('hr.view_all')) {
+            $own = $user->employeeRecord();
+            abort_unless($own, 403, __('Your account is not linked to an employee record.'));
+            $employees = collect([$own]);
+        } else {
+            $employees = Employee::where('active', true)->orderBy('name')->get();
+        }
+
         $leaveTypes = LeaveType::orderBy('name')->get();
         return view('leaves.create', compact('employees', 'leaveTypes'));
     }
@@ -130,9 +183,18 @@ class LeaveController extends Controller
             'name'              => 'nullable|string|max:500',
         ]);
 
+        // Plain employees can only file for themselves, whatever was posted.
+        $user = $request->user();
+        if (!$user->can('hr.view_all')) {
+            $own = $user->employeeRecord();
+            abort_unless($own, 403, __('Your account is not linked to an employee record.'));
+            $data['employee_id'] = $own->odoo_id;
+        }
+
         $payload = [
-            'employee_id'       => $data['employee_id'],
-            'holiday_status_id' => $data['holiday_status_id'],
+            // form ids arrive as strings — Odoo needs ints for many2one
+            'employee_id'       => (int) $data['employee_id'],
+            'holiday_status_id' => (int) $data['holiday_status_id'],
             'date_from'         => $data['date_from'] . ' 00:00:00',
             'date_to'           => $data['date_to']   . ' 23:59:59',
         ];

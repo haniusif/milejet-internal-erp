@@ -27,6 +27,29 @@ class User extends Authenticatable
         'roles_synced_at'   => 'datetime',
     ];
 
+    /** Memoized result of employeeRecord(); false = not resolved yet. */
+    protected Employee|null|false $employeeRecord = false;
+
+    /**
+     * The hr.employee record belonging to this user. Mobile login stores
+     * odoo_employee_id directly; web login relies on the work-email match.
+     */
+    public function employeeRecord(): ?Employee
+    {
+        if ($this->employeeRecord === false) {
+            $this->employeeRecord = $this->odoo_employee_id
+                ? Employee::where('odoo_id', $this->odoo_employee_id)->first()
+                : null;
+
+            if (!$this->employeeRecord && $this->email) {
+                $this->employeeRecord = Employee::whereRaw(
+                    'LOWER(work_email) = ?', [mb_strtolower($this->email)]
+                )->first();
+            }
+        }
+        return $this->employeeRecord;
+    }
+
     public function hasRole(string $role): bool
     {
         return in_array($role, $this->roles ?? [], true);
