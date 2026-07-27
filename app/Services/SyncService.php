@@ -17,6 +17,8 @@ use App\Models\Department;
 use App\Models\Employee;
 use App\Models\FinanceInvoice;
 use App\Models\FleetServiceLog;
+use App\Models\FleetAccident;
+use App\Models\FleetFuelLog;
 use App\Models\FleetInspection;
 use App\Models\FleetInspectionItem;
 use App\Models\FleetInspectionLine;
@@ -190,7 +192,8 @@ class SyncService
                 'fleet.vehicle', [['active', 'in', [true, false]]],
                 ['id', 'name', 'model_id', 'license_plate', 'vin_sn', 'driver_id', 'state_id',
                  'odometer', 'odometer_unit', 'fuel_type', 'fuel_capacity', 'vehicle_category_id',
-                 'model_year', 'color', 'seats', 'doors', 'acquisition_date', 'car_value', 'active', 'in_use'],
+                 'model_year', 'color', 'seats', 'doors', 'acquisition_date', 'car_value', 'active', 'in_use',
+                 'inspection_expiry', 'fuel_card_no'],
                 0, 0, 'id asc'
             );
             foreach ($rows as $row) {
@@ -220,11 +223,16 @@ class SyncService
                         'car_value'              => $row['car_value'] ?: null,
                         'active'                 => (bool) ($row['active'] ?? true),
                         'in_use'                 => (bool) ($row['in_use'] ?? false),
+                        'inspection_expiry'      => $this->parseOdooDate($row['inspection_expiry']),
+                        'fuel_card_no'           => $row['fuel_card_no'] ?: null,
                         'synced_at'              => now(),
                     ]
                 );
                 $count++;
             }
+
+            // Fuel logs (fleet_vehicle_log_fuel) + accidents (mj_fleet_ops).
+            $count += $this->syncFleetOps();
 
             // Sub-service-type names by odoo id (fleet_vehicle_service_services).
             $typeNames = FleetServiceType::pluck('name', 'odoo_id');
@@ -739,6 +747,63 @@ class SyncService
 
             return $count;
         });
+    }
+
+    /** Fuel logs + accidents (mj_fleet_ops). Returns rows written. */
+    protected function syncFleetOps(): int
+    {
+        $n = 0;
+        $rows = $this->odoo->searchRead('fleet.vehicle.log.fuel', [['active', 'in', [true, false]]],
+            ['id', 'vehicle_id', 'purchaser_id', 'date', 'liter', 'amount', 'price_per_liter', 'odometer', 'state'],
+            2000, 0, 'id desc');
+        $seen = [];
+        foreach ($rows as $r) {
+            $seen[] = $r['id'];
+            FleetFuelLog::updateOrCreate(['odoo_id' => $r['id']], [
+                'odoo_vehicle_id' => OdooService::many2oneId($r['vehicle_id']) ?? 0,
+                'vehicle_name'    => OdooService::many2oneName($r['vehicle_id']),
+                'driver_name'     => OdooService::many2oneName($r['purchaser_id']),
+                'date'            => $this->parseOdooDate($r['date']),
+                'liters'          => $r['liter'] ?? 0,
+                'amount'          => $r['amount'] ?? 0,
+                'price_per_liter' => $r['price_per_liter'] ?? 0,
+                'odometer'        => $r['odometer'] ?: null,
+                'state'           => $r['state'] ?? 'todo',
+                'synced_at'       => now(),
+            ]);
+            $n++;
+        }
+        FleetFuelLog::whereNotIn('odoo_id', $seen ?: [0])->delete();
+
+        $rows = $this->odoo->searchRead('fleet.accident', [],
+            ['id', 'name', 'vehicle_id', 'driver_id', 'date', 'location', 'severity', 'description',
+             'third_party', 'repair_cost', 'insurer', 'claim_state', 'claim_amount', 'state'],
+            2000, 0, 'id desc');
+        $seen = [];
+        foreach ($rows as $r) {
+            $seen[] = $r['id'];
+            FleetAccident::updateOrCreate(['odoo_id' => $r['id']], [
+                'name'            => $r['name'] ?: null,
+                'odoo_vehicle_id' => OdooService::many2oneId($r['vehicle_id']) ?? 0,
+                'vehicle_name'    => OdooService::many2oneName($r['vehicle_id']),
+                'driver_name'     => OdooService::many2oneName($r['driver_id']),
+                'date'            => $this->parseOdooDate($r['date']),
+                'location'        => $r['location'] ?: null,
+                'severity'        => $r['severity'] ?: 'minor',
+                'description'     => $r['description'] ?: null,
+                'third_party'     => $r['third_party'] ?: null,
+                'repair_cost'     => $r['repair_cost'] ?? 0,
+                'insurer'         => $r['insurer'] ?: null,
+                'claim_state'     => $r['claim_state'] ?: 'none',
+                'claim_amount'    => $r['claim_amount'] ?? 0,
+                'state'           => $r['state'] ?? 'draft',
+                'synced_at'       => now(),
+            ]);
+            $n++;
+        }
+        FleetAccident::whereNotIn('odoo_id', $seen ?: [0])->delete();
+
+        return $n;
     }
 
     protected function writeLoan(array $row): Loan

@@ -10,6 +10,7 @@ import { Badge, ErrorBox, money, PageHeader, Spinner, SuccessBox, Table, Td, Th 
 import { Field, inputCls, Select, TextInput } from "@/components/form";
 import VehicleInspections from "@/components/fleet/VehicleInspections";
 import VehicleUsage from "@/components/fleet/VehicleUsage";
+import VehicleFuelAccidents from "@/components/fleet/VehicleFuelAccidents";
 
 export default function VehicleDetail() {
   const { t } = useI18n();
@@ -268,6 +269,14 @@ export default function VehicleDetail() {
             drivers={drivers}
             writable={writable}
             onChange={load}
+            onError={setError}
+          />
+
+          {/* Fuel + accidents (mj_fleet_ops) */}
+          <VehicleFuelAccidents
+            vehicleId={id}
+            vehicleOdooId={vehicle.odoo_id}
+            writable={writable}
             onError={setError}
           />
         </div>

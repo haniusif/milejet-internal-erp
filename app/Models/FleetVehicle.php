@@ -14,6 +14,7 @@ class FleetVehicle extends Model
         'active'           => 'boolean',
         'in_use'           => 'boolean',
         'acquisition_date' => 'date',
+        'inspection_expiry' => 'date',
         'fuel_capacity'    => 'decimal:2',
         'synced_at'        => 'datetime',
     ];

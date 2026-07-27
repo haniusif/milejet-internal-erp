@@ -20,6 +20,12 @@ export default function FleetPage() {
   const [q, setQ] = useState("");
   const [stateId, setStateId] = useState("");
   const [pageNum, setPageNum] = useState(1);
+  const [alerts, setAlerts] = useState<{
+    inspection: { vehicle_id: number; vehicle: string; expires: string; days_left: number }[];
+    contracts: { vehicle_id: number | null; vehicle: string; name: string; expires: string; days_left: number }[];
+    licence: { employee_id: number; driver: string; expires: string; days_left: number }[];
+    counts: { inspection: number; contracts: number; licence: number };
+  } | null>(null);
 
   useEffect(() => {
     api
@@ -27,6 +33,13 @@ export default function FleetPage() {
       .then(setPage)
       .catch(() => setPage(null));
   }, [q, stateId, pageNum]);
+
+  useEffect(() => {
+    api.get<{ data: typeof alerts }>("/fleet/alerts").then((r) => setAlerts(r.data)).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const hasAlerts = alerts && (alerts.counts.inspection + alerts.counts.contracts + alerts.counts.licence) > 0;
 
   return (
     <div>
@@ -37,6 +50,29 @@ export default function FleetPage() {
           </Link>
         )}
       </PageHeader>
+
+      {hasAlerts && (
+        <div className="mb-5 rounded-xl border border-amber-200 dark:border-amber-900/50 bg-amber-50 dark:bg-amber-900/20 p-4">
+          <p className="text-sm font-semibold text-amber-800 dark:text-amber-300 mb-2">⚠ {t("fleet.compliance_alerts")}</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-1">
+            {alerts!.inspection.map((a) => (
+              <Link key={`i${a.vehicle_id}`} href={`/fleet/vehicles/${a.vehicle_id}`} className="text-sm text-amber-900 dark:text-amber-200 hover:underline flex justify-between gap-2">
+                <span>🔧 {t("fleet.insp_expiring", { v: a.vehicle })}</span><span className="tabular-nums whitespace-nowrap">{t("alert.in_days", { d: a.days_left })}</span>
+              </Link>
+            ))}
+            {alerts!.contracts.map((a, i) => (
+              <span key={`c${i}`} className="text-sm text-amber-900 dark:text-amber-200 flex justify-between gap-2">
+                <span>📄 {a.vehicle} — {a.name}</span><span className="tabular-nums whitespace-nowrap">{t("alert.in_days", { d: a.days_left })}</span>
+              </span>
+            ))}
+            {alerts!.licence.map((a) => (
+              <span key={`l${a.employee_id}`} className="text-sm text-amber-900 dark:text-amber-200 flex justify-between gap-2">
+                <span>🪪 {t("fleet.licence_expiring", { n: a.driver })}</span><span className="tabular-nums whitespace-nowrap">{t("alert.in_days", { d: a.days_left })}</span>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
 
       {page && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">

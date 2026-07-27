@@ -228,10 +228,17 @@ Route::prefix('v1')->group(function () {
             Route::get('/services',      'services');
             Route::get('/inspections',   'inspections');
             Route::get('/usages',        'usages');
+            Route::get('/fuel',          'fuel');
+            Route::get('/accidents',     'accidents');
+            Route::get('/alerts',        'alerts');
             Route::get('/models',        'models');
             Route::get('/categories',    'categories');
             Route::get('/drivers',       'drivers');
             Route::middleware('can:fleet.write')->group(function () {
+                Route::post('/vehicles/{id}/fuel',      'addFuel')->whereNumber('id');
+                Route::post('/vehicles/{id}/accidents', 'addAccident')->whereNumber('id');
+                Route::post('/accidents/{id}/{action}', 'accidentAction')
+                    ->whereNumber('id')->whereIn('action', ['confirm', 'close', 'reset', 'file', 'approve', 'reject', 'paid']);
                 Route::post('/vehicles',                'storeVehicle');
                 Route::post('/vehicles/{id}/state',     'updateState')->whereNumber('id');
                 Route::post('/vehicles/{id}/odometer',  'updateOdometer')->whereNumber('id');

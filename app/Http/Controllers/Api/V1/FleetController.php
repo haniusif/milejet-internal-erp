@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Models\Employee;
+use App\Models\FleetAccident;
+use App\Models\FleetFuelLog;
 use App\Models\FleetInspection;
 use App\Models\FleetInspectionItem;
 use App\Models\FleetInspectionLine;
@@ -569,6 +571,193 @@ class FleetController extends Controller
             'amount'            => $s->amount,
             'vendor'            => $s->vendor_name,
             'state'             => $s->state,
+        ];
+    }
+
+    // ─── mj_fleet_ops: fuel · accidents · compliance alerts ──────────
+
+    public function fuel(Request $request): JsonResponse
+    {
+        $localId = FleetVehicle::pluck('id', 'odoo_id');
+        $q = FleetFuelLog::query();
+        if ($vid = $request->get('vehicle_odoo_id')) $q->where('odoo_vehicle_id', (int) $vid);
+        if ($m = $request->get('month')) {
+            $start = \Carbon\Carbon::createFromFormat('Y-m', $m)->startOfMonth();
+            $q->whereBetween('date', [$start, (clone $start)->endOfMonth()]);
+        }
+        $scope = clone $q;
+        $page = $q->orderByDesc('date')->orderByDesc('id')
+            ->paginate(min((int) $request->get('per_page', 30), 200))
+            ->withQueryString()->through(fn ($f) => [
+                'id' => $f->id, 'vehicle_id' => $localId[$f->odoo_vehicle_id] ?? null,
+                'vehicle_name' => $f->vehicle_name, 'driver' => $f->driver_name,
+                'date' => $f->date?->toDateString(), 'liters' => (float) $f->liters,
+                'amount' => (float) $f->amount, 'price_per_liter' => (float) $f->price_per_liter,
+                'odometer' => $f->odometer !== null ? (float) $f->odometer : null, 'state' => $f->state,
+            ]);
+        $liters = (float) (clone $scope)->sum('liters');
+        $spend = (float) (clone $scope)->sum('amount');
+        return response()->json($page->toArray() + ['totals' => [
+            'liters' => round($liters, 2), 'spend' => round($spend, 2),
+            'avg_price' => $liters ? round($spend / $liters, 3) : 0,
+        ]]);
+    }
+
+    public function addFuel(Request $request, int $id): JsonResponse
+    {
+        $vehicle = FleetVehicle::findOrFail($id);
+        $data = $request->validate([
+            'liters'   => 'required|numeric|min:0.01',
+            'amount'   => 'required|numeric|min:0',
+            'odometer' => 'nullable|numeric|min:0',
+            'date'     => 'nullable|date',
+        ]);
+        if (!empty($data['odometer']) && (float) $data['odometer'] < (float) $vehicle->odometer) {
+            return response()->json(['message' => __('Odometer must not be lower than the current value (:c).',
+                ['c' => number_format($vehicle->odometer)])], 422);
+        }
+        $ppl = (float) $data['liters'] > 0 ? round((float) $data['amount'] / (float) $data['liters'], 3) : 0;
+        try {
+            $payload = array_filter([
+                'vehicle_id' => $vehicle->odoo_id, 'liter' => (float) $data['liters'],
+                'amount' => (float) $data['amount'], 'price_per_liter' => $ppl,
+                'date' => $data['date'] ?? now()->toDateString(),
+            ]);
+            if (!empty($data['odometer'])) $payload['odometer'] = (float) $data['odometer'];
+            $fid = $this->odoo->create('fleet.vehicle.log.fuel', $payload);
+            // confirm → done so it records the odometer + a service line
+            $this->odoo->executeKw('fleet.vehicle.log.fuel', 'button_running', [[$fid]]);
+            $this->odoo->executeKw('fleet.vehicle.log.fuel', 'button_done', [[$fid]]);
+            $this->sync->syncFleet();
+        } catch (RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+        return response()->json(['message' => 'created'], 201);
+    }
+
+    public function accidents(Request $request): JsonResponse
+    {
+        $localId = FleetVehicle::pluck('id', 'odoo_id');
+        $q = FleetAccident::query();
+        if ($vid = $request->get('vehicle_odoo_id')) $q->where('odoo_vehicle_id', (int) $vid);
+        if ($s = $request->get('claim_state')) $q->where('claim_state', $s);
+        if ($sev = $request->get('severity')) $q->where('severity', $sev);
+        $page = $q->orderByDesc('date')->orderByDesc('id')
+            ->paginate(min((int) $request->get('per_page', 30), 200))
+            ->withQueryString()->through(fn ($a) => $this->accidentSummary($a, $localId));
+        return response()->json($page->toArray() + ['stats' => [
+            'total' => FleetAccident::count(),
+            'open_claims' => FleetAccident::whereIn('claim_state', ['filed', 'approved'])->count(),
+            'repair_cost' => (float) FleetAccident::sum('repair_cost'),
+        ]]);
+    }
+
+    public function addAccident(Request $request, int $id): JsonResponse
+    {
+        $vehicle = FleetVehicle::findOrFail($id);
+        $data = $request->validate([
+            'severity'    => 'required|in:minor,moderate,major,total_loss',
+            'date'        => 'nullable|date',
+            'location'    => 'nullable|string|max:255',
+            'description' => 'nullable|string|max:5000',
+            'third_party' => 'nullable|string|max:255',
+            'repair_cost' => 'nullable|numeric|min:0',
+            'insurer'     => 'nullable|string|max:255',
+        ]);
+        try {
+            $payload = array_filter([
+                'vehicle_id' => $vehicle->odoo_id, 'severity' => $data['severity'],
+                'date' => $data['date'] ?? now()->toDateTimeString(),
+                'location' => $data['location'] ?? null, 'description' => $data['description'] ?? null,
+                'third_party' => $data['third_party'] ?? null, 'insurer' => $data['insurer'] ?? null,
+            ], fn ($v) => $v !== null);
+            if (isset($data['repair_cost'])) $payload['repair_cost'] = (float) $data['repair_cost'];
+            $aid = $this->odoo->create('fleet.accident', $payload);
+            $this->odoo->executeKw('fleet.accident', 'action_confirm', [[$aid]]);
+            $this->sync->syncFleet();
+        } catch (RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+        return response()->json(['message' => 'created'], 201);
+    }
+
+    public function accidentAction(string $action, int $id): JsonResponse
+    {
+        $acc = FleetAccident::findOrFail($id);
+        $map = ['confirm' => 'action_confirm', 'close' => 'action_close', 'reset' => 'action_reset',
+                'file' => 'claim_file', 'approve' => 'claim_approve', 'reject' => 'claim_reject', 'paid' => 'claim_paid'];
+        abort_unless(isset($map[$action]), 404);
+        try {
+            $this->odoo->executeKw('fleet.accident', $map[$action], [[$acc->odoo_id]]);
+            $this->sync->syncFleet();
+        } catch (RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+        return response()->json(['data' => ['id' => $acc->id]]);
+    }
+
+    /** Compliance alerts: inspection/insurance/registration/licence expiring ≤N days. */
+    public function alerts(Request $request): JsonResponse
+    {
+        $days = min(max((int) $request->get('days', 30), 1), 120);
+        $today = now()->startOfDay();
+        $horizon = (clone $today)->addDays($days);
+
+        // Inspection expiry (local cache)
+        $inspection = FleetVehicle::where('active', true)->whereNotNull('inspection_expiry')
+            ->whereBetween('inspection_expiry', [$today, $horizon])->orderBy('inspection_expiry')
+            ->get()->map(fn ($v) => [
+                'vehicle_id' => $v->id, 'vehicle' => $v->name, 'plate' => $v->license_plate,
+                'kind' => 'inspection', 'expires' => $v->inspection_expiry->toDateString(),
+                'days_left' => (int) $today->diffInDays($v->inspection_expiry, false),
+            ])->values();
+
+        // Insurance/registration — reuse Odoo contract renewal (live read).
+        $contracts = [];
+        try {
+            $rows = $this->odoo->searchRead('fleet.vehicle.log.contract',
+                [['state', '=', 'open'], ['expiration_date', '>=', $today->toDateString()],
+                 ['expiration_date', '<=', $horizon->toDateString()]],
+                ['name', 'vehicle_id', 'expiration_date'], 100, 0, 'expiration_date asc');
+            $localId = FleetVehicle::pluck('id', 'odoo_id');
+            foreach ($rows as $r) {
+                $exp = $r['expiration_date'];
+                $vid = OdooService::many2oneId($r['vehicle_id']);
+                $contracts[] = [
+                    'vehicle_id' => $localId[$vid] ?? null,
+                    'vehicle' => OdooService::many2oneName($r['vehicle_id']),
+                    'kind' => 'contract', 'name' => $r['name'] ?: 'Contract', 'expires' => $exp,
+                    'days_left' => (int) $today->diffInDays(\Carbon\Carbon::parse($exp), false),
+                ];
+            }
+        } catch (\Throwable) {
+        }
+
+        // Driver licence — from employees linked as drivers (local cache).
+        $licence = Employee::where('active', true)->whereNotNull('license_expiry_date')
+            ->whereBetween('license_expiry_date', [$today, $horizon])->orderBy('license_expiry_date')
+            ->get()->map(fn ($e) => [
+                'employee_id' => $e->id, 'driver' => $e->name, 'kind' => 'licence',
+                'expires' => $e->license_expiry_date->toDateString(),
+                'days_left' => (int) $today->diffInDays($e->license_expiry_date, false),
+            ])->values();
+
+        return response()->json(['data' => [
+            'inspection' => $inspection, 'contracts' => $contracts, 'licence' => $licence,
+            'counts' => ['inspection' => $inspection->count(), 'contracts' => count($contracts), 'licence' => $licence->count()],
+        ]]);
+    }
+
+    protected function accidentSummary(FleetAccident $a, $localId): array
+    {
+        return [
+            'id' => $a->id, 'name' => $a->name,
+            'vehicle_id' => $localId[$a->odoo_vehicle_id] ?? null, 'vehicle_name' => $a->vehicle_name,
+            'driver' => $a->driver_name, 'date' => $a->date?->toDateTimeString(),
+            'location' => $a->location, 'severity' => $a->severity, 'description' => $a->description,
+            'third_party' => $a->third_party, 'repair_cost' => (float) $a->repair_cost,
+            'insurer' => $a->insurer, 'claim_state' => $a->claim_state,
+            'claim_amount' => (float) $a->claim_amount, 'state' => $a->state,
         ];
     }
 }
