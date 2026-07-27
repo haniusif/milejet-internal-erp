@@ -10,9 +10,10 @@ class CrmCustomer extends Model
     protected $guarded = ['id'];
 
     protected $casts = [
-        'is_company' => 'boolean',
-        'active'     => 'boolean',
-        'synced_at'  => 'datetime',
+        'is_company'   => 'boolean',
+        'active'       => 'boolean',
+        'credit_limit' => 'decimal:2',
+        'synced_at'    => 'datetime',
     ];
 
     public function leads(): HasMany

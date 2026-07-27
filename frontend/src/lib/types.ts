@@ -194,6 +194,60 @@ export interface CrmCustomer {
   leads_count: number;
 }
 
+export interface CrmActivity {
+  odoo_id: number;
+  type: string | null;
+  summary: string | null;
+  note: string | null;
+  deadline: string | null;
+  user: string | null;
+  state: string | null; // overdue | today | planned
+}
+
+export interface CrmNote {
+  author: string | null;
+  date: string | null;
+  body: string;
+}
+
+export interface CrmLeadDetail extends CrmLead {
+  mobile?: string | null;
+  description: string | null;
+  tag_names: string | null;
+  team_name: string | null;
+  lost_reason: string | null;
+  activities: CrmActivity[];
+  notes: CrmNote[];
+  customer: { id: number; name: string; account_manager: string | null; credit_limit: number; leads_count: number } | null;
+}
+
+export interface CrmConfig {
+  salespeople: { id: number; name: string }[];
+  tags: { odoo_id: number; name: string; color: number }[];
+  lost_reasons: { odoo_id: number; name: string }[];
+  stages: { odoo_id: number; name: string; is_won: boolean }[];
+}
+
+export interface CrmCustomer360 {
+  id: number;
+  odoo_id: number;
+  name: string;
+  is_company: boolean;
+  email: string | null;
+  phone: string | null;
+  mobile: string | null;
+  city: string | null;
+  country: string | null;
+  vat: string | null;
+  account_manager: string | null;
+  credit_limit: number;
+  kpis: { opps: number; invoiced: number; due: number; shipments: number | null };
+  opportunities: CrmLead[];
+  invoices: { name: string; date: string | null; total: number; residual: number; payment_state: string | null }[];
+  payments: { name: string; date: string | null; amount: number }[];
+  activities: CrmActivity[];
+}
+
 export interface FleetVehicle {
   id: number;
   odoo_id: number;

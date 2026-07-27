@@ -202,15 +202,23 @@ Route::prefix('v1')->group(function () {
         });
 
         Route::prefix('crm')->controller(V1Crm::class)->middleware('can:crm.view')->group(function () {
-            Route::get('/pipeline',  'pipeline');
-            Route::get('/customers', 'customers');
+            Route::get('/pipeline',       'pipeline');
+            Route::get('/config',         'config');
+            Route::get('/customers',      'customers');
+            Route::get('/customers/{id}', 'customer360')->whereNumber('id');
+            Route::get('/leads/{id}',     'leadDetail')->whereNumber('id');
             Route::middleware('can:crm.write')->group(function () {
                 Route::post('/leads',               'storeLead');
+                Route::put('/leads/{id}',           'updateLead')->whereNumber('id');
                 Route::post('/leads/{id}/stage',    'moveStage')->whereNumber('id');
                 Route::post('/leads/{id}/won',      'won')->whereNumber('id');
                 Route::post('/leads/{id}/lost',     'lost')->whereNumber('id');
                 Route::post('/leads/{id}/restore',  'restore')->whereNumber('id');
+                Route::post('/leads/{id}/activities', 'storeActivity')->whereNumber('id');
+                Route::post('/leads/{id}/note',       'storeNote')->whereNumber('id');
+                Route::post('/activities/{aid}/done', 'doneActivity')->whereNumber('aid');
                 Route::post('/customers',           'storeCustomer');
+                Route::put('/customers/{id}',       'updateCustomer')->whereNumber('id');
             });
         });
 

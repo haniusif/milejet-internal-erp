@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { api, qs } from "@/lib/api";
 import type { CrmCustomer, Paginated } from "@/lib/types";
@@ -62,7 +63,8 @@ export default function CustomersPage() {
             {page.data.map((c) => (
               <tr key={c.id} className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40">
                 <Td className="font-medium text-slate-900 dark:text-slate-100">
-                  {c.name} {c.is_company && <Badge tone="indigo">Co.</Badge>}
+                  <Link href={`/crm/customers/${c.id}`} className="hover:text-brand-600 hover:underline">{c.name}</Link>{" "}
+                  {c.is_company && <Badge tone="indigo">Co.</Badge>}
                 </Td>
                 <Td>{c.email ?? "—"}</Td>
                 <Td className="tabular-nums">{c.phone ?? "—"}</Td>

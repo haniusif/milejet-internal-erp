@@ -3,6 +3,7 @@
 // CRM pipeline — kanban with native HTML5 drag & drop onto stage columns.
 // Stage moves POST immediately; optimistic update with rollback on error.
 
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { api, ApiError, qs } from "@/lib/api";
 import type { CrmLead, CrmStage, Paginated } from "@/lib/types";
@@ -155,7 +156,7 @@ export default function CrmPipeline() {
                       writable ? "cursor-grab active:cursor-grabbing" : ""
                     } ${dragId === lead.id ? "opacity-50" : ""} ${!lead.active ? "opacity-60" : ""}`}
                   >
-                    <p className="text-sm font-medium text-slate-900 mb-1">{lead.name}</p>
+                    <Link href={`/crm/leads/${lead.id}`} className="text-sm font-medium text-slate-900 mb-1 block hover:text-brand-600 hover:underline">{lead.name}</Link>
                     <p className="text-xs text-slate-500 mb-2">
                       {lead.partner_name ?? lead.contact_name ?? "—"}
                     </p>

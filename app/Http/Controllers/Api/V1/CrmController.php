@@ -5,7 +5,9 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Controller;
 use App\Models\CrmCustomer;
 use App\Models\CrmLead;
+use App\Models\CrmLostReason;
 use App\Models\CrmStage;
+use App\Models\CrmTag;
 use App\Services\OdooService;
 use App\Services\SyncService;
 use Illuminate\Http\JsonResponse;
@@ -127,12 +129,18 @@ class CrmController extends Controller
         return response()->json(['data' => $this->leadSummary($lead->fresh())]);
     }
 
-    public function lost(int $id): JsonResponse
+    public function lost(Request $request, int $id): JsonResponse
     {
         $lead = CrmLead::findOrFail($id);
+        $data = $request->validate(['lost_reason_id' => 'nullable|integer|exists:crm_lost_reasons,odoo_id']);
+
+        $payload = ['active' => false, 'probability' => 0];
+        if (!empty($data['lost_reason_id'])) {
+            $payload['lost_reason_id'] = (int) $data['lost_reason_id'];
+        }
 
         try {
-            $this->odoo->write('crm.lead', [$lead->odoo_id], ['active' => false, 'probability' => 0]);
+            $this->odoo->write('crm.lead', [$lead->odoo_id], $payload);
         } catch (RuntimeException $e) {
             return response()->json(['message' => $e->getMessage()], 422);
         }
@@ -155,6 +163,278 @@ class CrmController extends Controller
         $lead->update(['active' => true, 'synced_at' => now()]);
 
         return response()->json(['data' => $this->leadSummary($lead->fresh())]);
+    }
+
+    // ─── mj_crm_core: detail / edit / activities / 360° ──────────────
+
+    /** Full lead detail: summary + description/tags + live activities + notes + mini-360. */
+    public function leadDetail(int $id): JsonResponse
+    {
+        $lead = CrmLead::findOrFail($id);
+
+        $activities = $this->activitiesFor('crm.lead', $lead->odoo_id);
+        $notes = $this->notesFor('crm.lead', $lead->odoo_id);
+
+        $customer = null;
+        if ($lead->odoo_partner_id && ($c = CrmCustomer::where('odoo_id', $lead->odoo_partner_id)->first())) {
+            $customer = [
+                'id'              => $c->id,
+                'name'            => $c->name,
+                'account_manager' => $c->account_manager,
+                'credit_limit'    => (float) $c->credit_limit,
+                'leads_count'     => $c->leads()->count(),
+            ];
+        }
+
+        return response()->json(['data' => $this->leadSummary($lead) + [
+            'description' => $lead->description,
+            'tag_names'   => $lead->tag_names,
+            'team_name'   => $lead->team_name,
+            'lost_reason' => $lead->lost_reason,
+            'activities'  => $activities,
+            'notes'       => $notes,
+            'customer'    => $customer,
+        ]]);
+    }
+
+    public function updateLead(Request $request, int $id): JsonResponse
+    {
+        $lead = CrmLead::findOrFail($id);
+        $data = $request->validate([
+            'name'             => 'sometimes|required|string|max:255',
+            'contact_name'     => 'nullable|string|max:255',
+            'email_from'       => 'nullable|email|max:255',
+            'phone'            => 'nullable|string|max:64',
+            'mobile'           => 'nullable|string|max:64',
+            'expected_revenue' => 'nullable|numeric|min:0',
+            'probability'      => 'nullable|numeric|min:0|max:100',
+            'user_id'          => 'nullable|integer', // salesperson res.users id
+            'date_deadline'    => 'nullable|date',
+            'priority'         => 'nullable|in:0,1,2,3',
+            'description'      => 'nullable|string|max:10000',
+            'tag_ids'          => 'nullable|array',
+            'tag_ids.*'        => 'integer|exists:crm_tags,odoo_id',
+        ]);
+
+        $payload = [];
+        foreach (['name', 'contact_name', 'email_from', 'phone', 'mobile', 'description'] as $f) {
+            if (array_key_exists($f, $data)) $payload[$f] = $data[$f] ?: false;
+        }
+        foreach (['expected_revenue', 'probability'] as $f) {
+            if (array_key_exists($f, $data)) $payload[$f] = $data[$f] === null ? 0 : (float) $data[$f];
+        }
+        if (array_key_exists('date_deadline', $data)) $payload['date_deadline'] = $data['date_deadline'] ?: false;
+        if (array_key_exists('priority', $data)) $payload['priority'] = (string) $data['priority'];
+        if (array_key_exists('user_id', $data)) $payload['user_id'] = $data['user_id'] ? (int) $data['user_id'] : false;
+        if (array_key_exists('tag_ids', $data)) {
+            $payload['tag_ids'] = [[6, 0, array_map('intval', $data['tag_ids'] ?? [])]];
+        }
+
+        try {
+            $this->odoo->write('crm.lead', [$lead->odoo_id], $payload);
+            $this->sync->syncCrm();
+        } catch (RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        return response()->json(['data' => $this->leadSummary($lead->fresh())]);
+    }
+
+    /** Pickers for the edit form: salespeople, tags, lost reasons, stages. */
+    public function config(): JsonResponse
+    {
+        $salespeople = cache()->remember('crm.salespeople', now()->addHour(), function () {
+            return $this->odoo->searchRead('res.users', [['share', '=', false]], ['id', 'name'], 0, 0, 'name asc');
+        });
+
+        return response()->json(['data' => [
+            'salespeople'  => $salespeople,
+            'tags'         => CrmTag::orderBy('name')->get(['odoo_id', 'name', 'color']),
+            'lost_reasons' => CrmLostReason::orderBy('name')->get(['odoo_id', 'name']),
+            'stages'       => CrmStage::orderBy('sequence')->get(['odoo_id', 'name', 'is_won']),
+        ]]);
+    }
+
+    public function storeActivity(Request $request, int $id): JsonResponse
+    {
+        $lead = CrmLead::findOrFail($id);
+        $data = $request->validate([
+            'type'    => 'required|in:call,meeting,todo,email',
+            'summary' => 'nullable|string|max:255',
+            'note'    => 'nullable|string|max:2000',
+            'date'    => 'nullable|date',
+        ]);
+
+        try {
+            $modelId = $this->odoo->searchRead('ir.model', [['model', '=', 'crm.lead']], ['id'], 1)[0]['id'] ?? null;
+            $typeName = ['call' => 'mail_activity_data_call', 'meeting' => 'mail_activity_data_meeting',
+                         'todo' => 'mail_activity_data_todo', 'email' => 'mail_activity_data_email'][$data['type']];
+            // Odoo 17: resolve the activity-type xmlid → res_id via check_object_reference.
+            $ref = $this->odoo->executeKw('ir.model.data', 'check_object_reference', ['mail', $typeName]);
+            $typeId = is_array($ref) ? ($ref[1] ?? false) : false;
+            $this->odoo->create('mail.activity', array_filter([
+                'res_model_id'   => $modelId,
+                'res_id'         => $lead->odoo_id,
+                'activity_type_id' => $typeId ?: false,
+                'summary'        => $data['summary'] ?? false,
+                'note'           => $data['note'] ?? false,
+                'date_deadline'  => $data['date'] ?? now()->toDateString(),
+            ], fn ($v) => $v !== false && $v !== null));
+        } catch (RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        return response()->json(['data' => ['activities' => $this->activitiesFor('crm.lead', $lead->odoo_id)]], 201);
+    }
+
+    public function doneActivity(Request $request, int $activityOdooId): JsonResponse
+    {
+        $data = $request->validate(['feedback' => 'nullable|string|max:2000']);
+        try {
+            $this->odoo->executeKw('mail.activity', 'action_feedback', [[$activityOdooId]],
+                ['feedback' => $data['feedback'] ?? false]);
+        } catch (RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+        return response()->json(['message' => 'done']);
+    }
+
+    public function storeNote(Request $request, int $id): JsonResponse
+    {
+        $lead = CrmLead::findOrFail($id);
+        $data = $request->validate(['note' => 'required|string|max:5000']);
+        try {
+            $this->odoo->executeKw('crm.lead', 'message_post', [[$lead->odoo_id]],
+                ['body' => e($data['note']), 'message_type' => 'comment', 'subtype_xmlid' => 'mail.mt_comment']);
+        } catch (RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+        return response()->json(['data' => ['notes' => $this->notesFor('crm.lead', $lead->odoo_id)]], 201);
+    }
+
+    public function updateCustomer(Request $request, int $id): JsonResponse
+    {
+        $customer = CrmCustomer::findOrFail($id);
+        $data = $request->validate([
+            'email'        => 'nullable|email|max:255',
+            'phone'        => 'nullable|string|max:64',
+            'mobile'       => 'nullable|string|max:64',
+            'city'         => 'nullable|string|max:128',
+            'vat'          => 'nullable|string|max:64',
+            'credit_limit' => 'nullable|numeric|min:0',
+            'user_id'      => 'nullable|integer', // account manager
+        ]);
+
+        $payload = [];
+        foreach (['email', 'phone', 'mobile', 'city', 'vat'] as $f) {
+            if (array_key_exists($f, $data)) $payload[$f] = $data[$f] ?: false;
+        }
+        if (array_key_exists('credit_limit', $data)) $payload['credit_limit'] = (float) ($data['credit_limit'] ?? 0);
+        if (array_key_exists('user_id', $data)) $payload['user_id'] = $data['user_id'] ? (int) $data['user_id'] : false;
+
+        try {
+            $this->odoo->write('res.partner', [$customer->odoo_id], $payload);
+            $this->sync->syncCrm();
+        } catch (RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        return response()->json(['data' => ['id' => $customer->id]]);
+    }
+
+    /** Customer 360°: profile + opps + financials (invoiced/due/payments) + activities. */
+    public function customer360(int $id): JsonResponse
+    {
+        $customer = CrmCustomer::findOrFail($id);
+        $pid = $customer->odoo_id;
+
+        // Opportunities (from local cache)
+        $opps = CrmLead::where('odoo_partner_id', $pid)->orderByDesc('odoo_create_date')->get()
+            ->map(fn ($l) => $this->leadSummary($l));
+
+        // Financials — live read from Odoo accounting.
+        $invoiced = 0.0; $due = 0.0; $invoices = []; $payments = [];
+        try {
+            $moves = $this->odoo->searchRead('account.move',
+                [['partner_id', '=', $pid], ['move_type', '=', 'out_invoice'], ['state', '=', 'posted']],
+                ['id', 'name', 'invoice_date', 'amount_total', 'amount_residual', 'payment_state'], 20, 0, 'invoice_date desc');
+            foreach ($moves as $m) {
+                $invoiced += (float) $m['amount_total'];
+                $due += (float) $m['amount_residual'];
+                $invoices[] = ['name' => $m['name'], 'date' => $m['invoice_date'] ?: null,
+                    'total' => (float) $m['amount_total'], 'residual' => (float) $m['amount_residual'],
+                    'payment_state' => $m['payment_state'] ?? null];
+            }
+            $pays = $this->odoo->searchRead('account.payment',
+                [['partner_id', '=', $pid], ['state', '=', 'posted']],
+                ['id', 'name', 'date', 'amount'], 20, 0, 'date desc');
+            foreach ($pays as $p) $payments[] = ['name' => $p['name'], 'date' => $p['date'] ?: null, 'amount' => (float) $p['amount']];
+        } catch (\Throwable) {
+            // accounting may be sparse; degrade gracefully
+        }
+
+        return response()->json(['data' => [
+            'id'              => $customer->id,
+            'odoo_id'         => $customer->odoo_id,
+            'name'            => $customer->name,
+            'is_company'      => (bool) $customer->is_company,
+            'email'           => $customer->email,
+            'phone'           => $customer->phone,
+            'mobile'          => $customer->mobile,
+            'city'            => $customer->city,
+            'country'         => $customer->country_name,
+            'vat'             => $customer->vat,
+            'account_manager' => $customer->account_manager,
+            'credit_limit'    => (float) $customer->credit_limit,
+            'kpis' => [
+                'opps'      => $opps->count(),
+                'invoiced'  => round($invoiced, 2),
+                'due'       => round($due, 2),
+                'shipments' => null, // hook — milejet_shipment (P0) not yet built
+            ],
+            'opportunities' => $opps,
+            'invoices'      => $invoices,
+            'payments'      => $payments,
+            'activities'    => $this->activitiesFor('res.partner', $pid),
+        ]]);
+    }
+
+    /** Live activities for a record (open + recent). */
+    protected function activitiesFor(string $model, int $resId): array
+    {
+        try {
+            $rows = $this->odoo->searchRead('mail.activity',
+                [['res_model', '=', $model], ['res_id', '=', $resId]],
+                ['id', 'summary', 'activity_type_id', 'date_deadline', 'user_id', 'state', 'note'], 30, 0, 'date_deadline asc');
+        } catch (\Throwable) {
+            return [];
+        }
+        return array_map(fn ($a) => [
+            'odoo_id'  => $a['id'],
+            'type'     => OdooService::many2oneName($a['activity_type_id']),
+            'summary'  => $a['summary'] ?: null,
+            'note'     => is_string($a['note']) ? strip_tags($a['note']) : null,
+            'deadline' => $a['date_deadline'] ?: null,
+            'user'     => OdooService::many2oneName($a['user_id']),
+            'state'    => $a['state'] ?? null, // overdue / today / planned
+        ], $rows);
+    }
+
+    /** Recent chatter notes (message_type comment). */
+    protected function notesFor(string $model, int $resId): array
+    {
+        try {
+            $rows = $this->odoo->searchRead('mail.message',
+                [['model', '=', $model], ['res_id', '=', $resId], ['message_type', '=', 'comment']],
+                ['id', 'body', 'author_id', 'date'], 20, 0, 'date desc');
+        } catch (\Throwable) {
+            return [];
+        }
+        return array_map(fn ($m) => [
+            'author' => OdooService::many2oneName($m['author_id']),
+            'date'   => $m['date'] ?: null,
+            'body'   => trim(strip_tags(str_replace(['<br>', '<br/>', '</p>'], "\n", (string) $m['body']))),
+        ], $rows);
     }
 
     public function customers(Request $request): JsonResponse
