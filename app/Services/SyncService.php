@@ -40,6 +40,10 @@ use App\Models\HrRequest;
 use App\Models\HrAppraisal;
 use App\Models\HrAppraisalLine;
 use App\Models\HrRecognition;
+use App\Models\TrainingCourse;
+use App\Models\TrainingSession;
+use App\Models\TrainingEnrollment;
+use App\Models\TrainingNeed;
 use App\Models\Payslip;
 use App\Models\PayslipLine;
 use App\Models\PayslipPayment;
@@ -78,6 +82,10 @@ class SyncService
             'hr_requests' => $this->syncHrRequests(),
             'appraisals'  => $this->syncAppraisals(),
             'recognitions' => $this->syncRecognitions(),
+            'training_courses' => $this->syncTrainingCourses(),
+            'training_sessions' => $this->syncTrainingSessions(),
+            'training_enrollments' => $this->syncTrainingEnrollments(),
+            'training_needs' => $this->syncTrainingNeeds(),
             'warnings'    => $this->syncWarnings(),
             'sick_leaves' => $this->syncSickLeaves(),
             'service_ends' => $this->syncServiceEnds(),
@@ -1148,6 +1156,160 @@ class SyncService
         } catch (Throwable) {
             return null;
         }
+    }
+
+    // --- Training (mj_hr_training) ---
+
+    public function syncTrainingCourses(): SyncLog
+    {
+        return $this->runSync('mj.hr.course', function () {
+            $rows = $this->odoo->searchRead('mj.hr.course', [],
+                ['id', 'name', 'code', 'category', 'description', 'duration_hours',
+                 'is_mandatory', 'validity_months', 'pass_mark', 'skill_ids', 'session_count', 'active'],
+                2000, 0, 'id desc');
+            // resolve skill names in one batch
+            $skillIds = [];
+            foreach ($rows as $r) foreach (($r['skill_ids'] ?? []) as $sid) $skillIds[] = $sid;
+            $names = [];
+            if ($skillIds) {
+                foreach ($this->odoo->read('hr.skill', array_values(array_unique($skillIds)), ['id', 'name']) as $s) {
+                    $names[$s['id']] = $s['name'];
+                }
+            }
+            $seen = [];
+            foreach ($rows as $r) {
+                $seen[] = $r['id'];
+                $skills = array_values(array_filter(array_map(fn ($sid) => $names[$sid] ?? null, $r['skill_ids'] ?? [])));
+                TrainingCourse::updateOrCreate(['odoo_id' => $r['id']], [
+                    'name' => $r['name'] ?: '', 'code' => $r['code'] ?: null,
+                    'category' => $r['category'] ?? 'skills', 'description' => $r['description'] ?: null,
+                    'duration_hours' => (float) ($r['duration_hours'] ?? 0),
+                    'is_mandatory' => (bool) ($r['is_mandatory'] ?? false),
+                    'validity_months' => (int) ($r['validity_months'] ?? 0),
+                    'pass_mark' => (int) ($r['pass_mark'] ?? 0),
+                    'skill_names' => $skills ? implode(', ', $skills) : null,
+                    'session_count' => (int) ($r['session_count'] ?? 0),
+                    'active' => (bool) ($r['active'] ?? true),
+                    'synced_at' => now(),
+                ]);
+            }
+            TrainingCourse::whereNotIn('odoo_id', $seen ?: [0])->delete();
+            return count($rows);
+        });
+    }
+
+    public function syncTrainingSessions(): SyncLog
+    {
+        return $this->runSync('mj.hr.training.session', function () {
+            $rows = $this->odoo->searchRead('mj.hr.training.session', [],
+                ['id', 'name', 'course_id', 'trainer_user_id', 'trainer_external', 'mode',
+                 'location', 'date_start', 'date_end', 'capacity', 'seats_taken', 'seats_left', 'state'],
+                2000, 0, 'id desc');
+            $seen = [];
+            foreach ($rows as $r) {
+                $seen[] = $r['id'];
+                $this->writeTrainingSession($r);
+            }
+            TrainingSession::whereNotIn('odoo_id', $seen ?: [0])->delete();
+            return count($rows);
+        });
+    }
+
+    protected function writeTrainingSession(array $r): TrainingSession
+    {
+        return TrainingSession::updateOrCreate(['odoo_id' => $r['id']], [
+            'name' => $r['name'] ?: null,
+            'odoo_course_id' => OdooService::many2oneId($r['course_id']) ?? 0,
+            'course_name' => OdooService::many2oneName($r['course_id']),
+            'trainer_name' => OdooService::many2oneName($r['trainer_user_id']) ?: ($r['trainer_external'] ?: null),
+            'mode' => $r['mode'] ?? 'in_person', 'location' => $r['location'] ?: null,
+            'date_start' => $this->parseOdooDate($r['date_start']),
+            'date_end' => $this->parseOdooDate($r['date_end']),
+            'capacity' => (int) ($r['capacity'] ?? 0),
+            'seats_taken' => (int) ($r['seats_taken'] ?? 0),
+            'seats_left' => (int) ($r['seats_left'] ?? 0),
+            'state' => $r['state'] ?? 'draft', 'synced_at' => now(),
+        ]);
+    }
+
+    public function refreshTrainingSession(int $odooId): ?TrainingSession
+    {
+        try {
+            $rows = $this->odoo->read('mj.hr.training.session', [$odooId],
+                ['id', 'name', 'course_id', 'trainer_user_id', 'trainer_external', 'mode',
+                 'location', 'date_start', 'date_end', 'capacity', 'seats_taken', 'seats_left', 'state']);
+            return empty($rows) ? null : $this->writeTrainingSession($rows[0]);
+        } catch (Throwable) {
+            return null;
+        }
+    }
+
+    public function syncTrainingEnrollments(): SyncLog
+    {
+        return $this->runSync('mj.hr.training.enrollment', function () {
+            $rows = $this->odoo->searchRead('mj.hr.training.enrollment', [],
+                ['id', 'session_id', 'course_id', 'employee_id', 'state', 'score',
+                 'completion_date', 'expiry_date', 'certificate_pdf', 'feedback_rating'],
+                5000, 0, 'id desc');
+            $seen = [];
+            foreach ($rows as $r) {
+                $seen[] = $r['id'];
+                $this->writeTrainingEnrollment($r);
+            }
+            TrainingEnrollment::whereNotIn('odoo_id', $seen ?: [0])->delete();
+            return count($rows);
+        });
+    }
+
+    protected function writeTrainingEnrollment(array $r): TrainingEnrollment
+    {
+        return TrainingEnrollment::updateOrCreate(['odoo_id' => $r['id']], [
+            'odoo_session_id' => OdooService::many2oneId($r['session_id']) ?? 0,
+            'session_name' => OdooService::many2oneName($r['session_id']),
+            'odoo_course_id' => OdooService::many2oneId($r['course_id']),
+            'course_name' => OdooService::many2oneName($r['course_id']),
+            'odoo_employee_id' => OdooService::many2oneId($r['employee_id']) ?? 0,
+            'employee_name' => OdooService::many2oneName($r['employee_id']),
+            'state' => $r['state'] ?? 'enrolled', 'score' => $r['score'] ?: null,
+            'completion_date' => $this->parseOdooDate($r['completion_date']),
+            'expiry_date' => $this->parseOdooDate($r['expiry_date']),
+            'has_certificate' => !empty($r['certificate_pdf']),
+            'feedback_rating' => $r['feedback_rating'] ?: null,
+            'synced_at' => now(),
+        ]);
+    }
+
+    public function refreshTrainingEnrollment(int $odooId): ?TrainingEnrollment
+    {
+        try {
+            $rows = $this->odoo->read('mj.hr.training.enrollment', [$odooId],
+                ['id', 'session_id', 'course_id', 'employee_id', 'state', 'score',
+                 'completion_date', 'expiry_date', 'certificate_pdf', 'feedback_rating']);
+            return empty($rows) ? null : $this->writeTrainingEnrollment($rows[0]);
+        } catch (Throwable) {
+            return null;
+        }
+    }
+
+    public function syncTrainingNeeds(): SyncLog
+    {
+        return $this->runSync('mj.hr.training.need', function () {
+            $rows = $this->odoo->searchRead('mj.hr.training.need', [],
+                ['id', 'employee_id', 'skill_id', 'source', 'state', 'note'], 5000, 0, 'id desc');
+            $seen = [];
+            foreach ($rows as $r) {
+                $seen[] = $r['id'];
+                TrainingNeed::updateOrCreate(['odoo_id' => $r['id']], [
+                    'odoo_employee_id' => OdooService::many2oneId($r['employee_id']) ?? 0,
+                    'employee_name' => OdooService::many2oneName($r['employee_id']),
+                    'skill_name' => OdooService::many2oneName($r['skill_id']),
+                    'source' => $r['source'] ?? 'manual', 'state' => $r['state'] ?? 'open',
+                    'note' => $r['note'] ?: null, 'synced_at' => now(),
+                ]);
+            }
+            TrainingNeed::whereNotIn('odoo_id', $seen ?: [0])->delete();
+            return count($rows);
+        });
     }
 
     public function syncEmployeeDocuments(): SyncLog

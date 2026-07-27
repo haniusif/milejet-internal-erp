@@ -17,6 +17,7 @@ use App\Http\Controllers\Api\V1\UploadController as V1Upload;
 use App\Http\Controllers\Api\V1\CourierDailyController as V1CourierDaily;
 use App\Http\Controllers\Api\V1\HrRequestController as V1HrRequest;
 use App\Http\Controllers\Api\V1\HrAppraisalController as V1HrAppraisal;
+use App\Http\Controllers\Api\V1\TrainingController as V1Training;
 use App\Http\Controllers\Api\V1\FleetKpiController as V1FleetKpi;
 use App\Http\Controllers\Api\V1\RecruitmentController as V1Recruitment;
 use App\Http\Controllers\MobileApiController;
@@ -71,6 +72,26 @@ Route::prefix('v1')->group(function () {
                 ->whereIn('action', ['submit', 'finalize', 'cancel', 'reset']);
             Route::get('/recognition',  'recognitions');
             Route::post('/recognition', 'storeRecognition');
+        });
+
+        // Training & development (mj_hr_training) — scoping inside the controller.
+        Route::prefix('hr/training')->controller(V1Training::class)->group(function () {
+            Route::get('/courses',  'courses');
+            Route::post('/courses', 'storeCourse');
+            Route::get('/skills',   'skills');
+            Route::get('/sessions', 'sessions');
+            Route::post('/sessions', 'storeSession');
+            Route::get('/sessions/{id}', 'showSession')->whereNumber('id');
+            Route::post('/sessions/{id}/{action}', 'sessionAction')->whereNumber('id')
+                ->whereIn('action', ['confirm', 'start', 'close', 'cancel', 'reset']);
+            Route::post('/enroll', 'enroll');
+            Route::post('/enrollments/{id}/{action}', 'enrollmentAction')->whereNumber('id')
+                ->whereIn('action', ['attend', 'complete', 'fail', 'no_show', 'cancel', 'reset']);
+            Route::get('/enrollments/{id}/certificate', 'certificate')->whereNumber('id');
+            Route::get('/mine', 'myTraining');
+            Route::get('/needs', 'needs');
+            Route::post('/needs/{id}/{action}', 'needAction')->whereNumber('id')
+                ->whereIn('action', ['plan', 'close']);
         });
         Route::prefix('hr')->controller(V1Hr::class)->group(function () {
             Route::get('/leaves',      'leaves');
