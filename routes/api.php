@@ -16,6 +16,7 @@ use App\Http\Controllers\Api\V1\OcrController as V1Ocr;
 use App\Http\Controllers\Api\V1\UploadController as V1Upload;
 use App\Http\Controllers\Api\V1\CourierDailyController as V1CourierDaily;
 use App\Http\Controllers\Api\V1\HrRequestController as V1HrRequest;
+use App\Http\Controllers\Api\V1\HrAppraisalController as V1HrAppraisal;
 use App\Http\Controllers\Api\V1\FleetKpiController as V1FleetKpi;
 use App\Http\Controllers\Api\V1\RecruitmentController as V1Recruitment;
 use App\Http\Controllers\MobileApiController;
@@ -56,6 +57,20 @@ Route::prefix('v1')->group(function () {
                 ->whereIn('action', ['approve', 'refuse', 'issue', 'cancel', 'reset']);
             Route::get('/expenses',  'expenses');
             Route::post('/expenses', 'storeExpense');
+        });
+
+        // Performance appraisals (mj_hr_performance) — scoping inside the controller.
+        Route::prefix('hr')->controller(V1HrAppraisal::class)->group(function () {
+            Route::get('/appraisals',            'index');
+            Route::get('/appraisals/{id}',       'show')->whereNumber('id');
+            Route::post('/appraisals',           'store');
+            Route::post('/appraisals/{id}/open', 'open')->whereNumber('id');
+            Route::put('/appraisals/{id}/lines', 'updateLines')->whereNumber('id');
+            Route::post('/appraisals/{id}/reward', 'reward')->whereNumber('id');
+            Route::post('/appraisals/{id}/{action}', 'action')->whereNumber('id')
+                ->whereIn('action', ['submit', 'finalize', 'cancel', 'reset']);
+            Route::get('/recognition',  'recognitions');
+            Route::post('/recognition', 'storeRecognition');
         });
         Route::prefix('hr')->controller(V1Hr::class)->group(function () {
             Route::get('/leaves',      'leaves');

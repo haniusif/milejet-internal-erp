@@ -37,6 +37,9 @@ use App\Models\Loan;
 use App\Models\LoanLine;
 use App\Models\EmployeeDocument;
 use App\Models\HrRequest;
+use App\Models\HrAppraisal;
+use App\Models\HrAppraisalLine;
+use App\Models\HrRecognition;
 use App\Models\Payslip;
 use App\Models\PayslipLine;
 use App\Models\PayslipPayment;
@@ -73,6 +76,8 @@ class SyncService
             'salary_adjustments' => $this->syncSalaryAdjustments(),
             'employee_documents' => $this->syncEmployeeDocuments(),
             'hr_requests' => $this->syncHrRequests(),
+            'appraisals'  => $this->syncAppraisals(),
+            'recognitions' => $this->syncRecognitions(),
             'warnings'    => $this->syncWarnings(),
             'sick_leaves' => $this->syncSickLeaves(),
             'service_ends' => $this->syncServiceEnds(),
@@ -980,6 +985,166 @@ class SyncService
                  'description', 'approver_id', 'manager_note', 'certificate_kind', 'addressed_to',
                  'certificate_pdf', 'target_department_id', 'last_working_day', 'resign_reason', 'item', 'qty']);
             return empty($rows) ? null : $this->writeHrRequest($rows[0]);
+        } catch (Throwable) {
+            return null;
+        }
+    }
+
+    /** Performance appraisals + objective/KPI lines (mj_hr_performance). */
+    public function syncAppraisals(): SyncLog
+    {
+        return $this->runSync('mj.hr.appraisal', function () {
+            $rows = $this->odoo->searchRead('mj.hr.appraisal', [],
+                ['id', 'name', 'employee_id', 'period', 'date_from', 'date_to', 'reviewer_id',
+                 'state', 'overall_rating', 'summary', 'reward_adjustment_id', 'line_ids'],
+                2000, 0, 'id desc');
+            $seen = [];
+            foreach ($rows as $r) {
+                $seen[] = $r['id'];
+                $this->writeAppraisal($r);
+            }
+            HrAppraisal::whereNotIn('odoo_id', $seen ?: [0])->delete();
+            // Lines: fetch all for the synced appraisals in one read.
+            $lineIds = [];
+            foreach ($rows as $r) { foreach (($r['line_ids'] ?? []) as $lid) $lineIds[] = $lid; }
+            $this->syncAppraisalLines($lineIds);
+            return count($rows);
+        });
+    }
+
+    protected function writeAppraisal(array $r): HrAppraisal
+    {
+        return HrAppraisal::updateOrCreate(['odoo_id' => $r['id']], [
+            'name'             => $r['name'] ?: null,
+            'odoo_employee_id' => OdooService::many2oneId($r['employee_id']) ?? 0,
+            'employee_name'    => OdooService::many2oneName($r['employee_id']),
+            'period'           => $r['period'] ?: null,
+            'date_from'        => $this->parseOdooDate($r['date_from']),
+            'date_to'          => $this->parseOdooDate($r['date_to']),
+            'reviewer_name'    => OdooService::many2oneName($r['reviewer_id']),
+            'state'            => $r['state'] ?? 'draft',
+            'overall_rating'   => (float) ($r['overall_rating'] ?? 0),
+            'summary'          => $r['summary'] ?: null,
+            'reward_odoo_id'   => OdooService::many2oneId($r['reward_adjustment_id']),
+            'synced_at'        => now(),
+        ]);
+    }
+
+    protected function syncAppraisalLines(array $lineIds): void
+    {
+        if (empty($lineIds)) { HrAppraisalLine::query()->delete(); return; }
+        $rows = $this->odoo->read('mj.hr.appraisal.line', $lineIds,
+            ['id', 'appraisal_id', 'sequence', 'name', 'category', 'skill_id', 'weight',
+             'target', 'auto_value', 'is_auto', 'self_rating', 'manager_rating', 'score']);
+        $seen = [];
+        foreach ($rows as $l) {
+            $seen[] = $l['id'];
+            HrAppraisalLine::updateOrCreate(['odoo_id' => $l['id']], [
+                'odoo_appraisal_id' => OdooService::many2oneId($l['appraisal_id']) ?? 0,
+                'sequence'       => (int) ($l['sequence'] ?? 10),
+                'name'           => $l['name'] ?: '',
+                'category'       => $l['category'] ?? 'objective',
+                'skill_name'     => OdooService::many2oneName($l['skill_id']),
+                'weight'         => (float) ($l['weight'] ?? 0),
+                'target'         => $l['target'] ?: null,
+                'auto_value'     => (float) ($l['auto_value'] ?? 0),
+                'is_auto'        => (bool) ($l['is_auto'] ?? false),
+                'self_rating'    => $l['self_rating'] ?: null,
+                'manager_rating' => $l['manager_rating'] ?: null,
+                'score'          => (float) ($l['score'] ?? 0),
+            ]);
+        }
+        HrAppraisalLine::whereNotIn('odoo_id', $seen ?: [0])->delete();
+    }
+
+    public function refreshAppraisal(int $odooId): ?HrAppraisal
+    {
+        try {
+            $rows = $this->odoo->read('mj.hr.appraisal', [$odooId],
+                ['id', 'name', 'employee_id', 'period', 'date_from', 'date_to', 'reviewer_id',
+                 'state', 'overall_rating', 'summary', 'reward_adjustment_id', 'line_ids']);
+            if (empty($rows)) return null;
+            $a = $this->writeAppraisal($rows[0]);
+            $this->syncAppraisalLinesFor($odooId, $rows[0]['line_ids'] ?? []);
+            return $a;
+        } catch (Throwable) {
+            return null;
+        }
+    }
+
+    /** Refresh just one appraisal's lines (delete stale lines for that appraisal only). */
+    protected function syncAppraisalLinesFor(int $appraisalOdooId, array $lineIds): void
+    {
+        if (empty($lineIds)) {
+            HrAppraisalLine::where('odoo_appraisal_id', $appraisalOdooId)->delete();
+            return;
+        }
+        $rows = $this->odoo->read('mj.hr.appraisal.line', $lineIds,
+            ['id', 'appraisal_id', 'sequence', 'name', 'category', 'skill_id', 'weight',
+             'target', 'auto_value', 'is_auto', 'self_rating', 'manager_rating', 'score']);
+        $seen = [];
+        foreach ($rows as $l) {
+            $seen[] = $l['id'];
+            HrAppraisalLine::updateOrCreate(['odoo_id' => $l['id']], [
+                'odoo_appraisal_id' => OdooService::many2oneId($l['appraisal_id']) ?? 0,
+                'sequence'       => (int) ($l['sequence'] ?? 10),
+                'name'           => $l['name'] ?: '',
+                'category'       => $l['category'] ?? 'objective',
+                'skill_name'     => OdooService::many2oneName($l['skill_id']),
+                'weight'         => (float) ($l['weight'] ?? 0),
+                'target'         => $l['target'] ?: null,
+                'auto_value'     => (float) ($l['auto_value'] ?? 0),
+                'is_auto'        => (bool) ($l['is_auto'] ?? false),
+                'self_rating'    => $l['self_rating'] ?: null,
+                'manager_rating' => $l['manager_rating'] ?: null,
+                'score'          => (float) ($l['score'] ?? 0),
+            ]);
+        }
+        HrAppraisalLine::where('odoo_appraisal_id', $appraisalOdooId)
+            ->whereNotIn('odoo_id', $seen ?: [0])->delete();
+    }
+
+    /** Employee recognition / kudos wall (mj_hr_performance). */
+    public function syncRecognitions(): SyncLog
+    {
+        return $this->runSync('mj.hr.recognition', function () {
+            $rows = $this->odoo->searchRead('mj.hr.recognition', [],
+                ['id', 'employee_id', 'from_user_id', 'badge', 'message', 'date'],
+                2000, 0, 'id desc');
+            $seen = [];
+            foreach ($rows as $r) {
+                $seen[] = $r['id'];
+                HrRecognition::updateOrCreate(['odoo_id' => $r['id']], [
+                    'odoo_employee_id' => OdooService::many2oneId($r['employee_id']) ?? 0,
+                    'employee_name'    => OdooService::many2oneName($r['employee_id']),
+                    'from_name'        => OdooService::many2oneName($r['from_user_id']),
+                    'badge'            => $r['badge'] ?? 'kudos',
+                    'message'          => $r['message'] ?: '',
+                    'date'             => $this->parseOdooDate($r['date']),
+                    'synced_at'        => now(),
+                ]);
+            }
+            HrRecognition::whereNotIn('odoo_id', $seen ?: [0])->delete();
+            return count($rows);
+        });
+    }
+
+    public function refreshRecognition(int $odooId): ?HrRecognition
+    {
+        try {
+            $rows = $this->odoo->read('mj.hr.recognition', [$odooId],
+                ['id', 'employee_id', 'from_user_id', 'badge', 'message', 'date']);
+            if (empty($rows)) return null;
+            $r = $rows[0];
+            return HrRecognition::updateOrCreate(['odoo_id' => $r['id']], [
+                'odoo_employee_id' => OdooService::many2oneId($r['employee_id']) ?? 0,
+                'employee_name'    => OdooService::many2oneName($r['employee_id']),
+                'from_name'        => OdooService::many2oneName($r['from_user_id']),
+                'badge'            => $r['badge'] ?? 'kudos',
+                'message'          => $r['message'] ?: '',
+                'date'             => $this->parseOdooDate($r['date']),
+                'synced_at'        => now(),
+            ]);
         } catch (Throwable) {
             return null;
         }
