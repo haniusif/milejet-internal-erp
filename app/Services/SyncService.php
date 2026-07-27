@@ -44,6 +44,8 @@ use App\Models\TrainingCourse;
 use App\Models\TrainingSession;
 use App\Models\TrainingEnrollment;
 use App\Models\TrainingNeed;
+use App\Models\CrmContract;
+use App\Models\CrmContractLine;
 use App\Models\Payslip;
 use App\Models\PayslipLine;
 use App\Models\PayslipPayment;
@@ -93,6 +95,7 @@ class SyncService
             'payslip_payments' => $this->syncPayslipPayments(),
             'recruitment' => $this->syncRecruitment(),
             'crm'         => $this->syncCrm(),
+            'crm_contracts' => $this->syncCrmContracts(),
             'fleet'       => $this->syncFleet(),
             'finance'     => $this->syncFinance(),
         ];
@@ -1310,6 +1313,122 @@ class SyncService
             TrainingNeed::whereNotIn('odoo_id', $seen ?: [0])->delete();
             return count($rows);
         });
+    }
+
+    // --- CRM contracts (mj_crm_contract) ---
+
+    public function syncCrmContracts(): SyncLog
+    {
+        return $this->runSync('mj.crm.contract', function () {
+            $rows = $this->odoo->searchRead('mj.crm.contract', [],
+                ['id', 'name', 'partner_id', 'crm_lead_id', 'user_id', 'date_start', 'date_end',
+                 'recurrence', 'auto_renew', 'payment_term_id', 'currency_id', 'amount_recurring',
+                 'next_invoice_date', 'state', 'delivery_sla_hours', 'on_time_target',
+                 'invoice_count', 'line_ids'],
+                5000, 0, 'id desc');
+            $seen = [];
+            $lineIds = [];
+            foreach ($rows as $r) {
+                $seen[] = $r['id'];
+                $this->writeCrmContract($r);
+                foreach (($r['line_ids'] ?? []) as $lid) $lineIds[] = $lid;
+            }
+            CrmContract::whereNotIn('odoo_id', $seen ?: [0])->delete();
+            $this->syncCrmContractLines($lineIds);
+            return count($rows);
+        });
+    }
+
+    protected function writeCrmContract(array $r): CrmContract
+    {
+        return CrmContract::updateOrCreate(['odoo_id' => $r['id']], [
+            'name' => $r['name'] ?: null,
+            'odoo_partner_id' => OdooService::many2oneId($r['partner_id']) ?? 0,
+            'partner_name' => OdooService::many2oneName($r['partner_id']),
+            'odoo_lead_id' => OdooService::many2oneId($r['crm_lead_id']),
+            'odoo_user_id' => OdooService::many2oneId($r['user_id']),
+            'user_name' => OdooService::many2oneName($r['user_id']),
+            'date_start' => $this->parseOdooDate($r['date_start']),
+            'date_end' => $this->parseOdooDate($r['date_end']),
+            'recurrence' => $r['recurrence'] ?? 'monthly',
+            'auto_renew' => (bool) ($r['auto_renew'] ?? false),
+            'payment_term' => OdooService::many2oneName($r['payment_term_id']),
+            'currency' => OdooService::many2oneName($r['currency_id']),
+            'amount_recurring' => (float) ($r['amount_recurring'] ?? 0),
+            'next_invoice_date' => $this->parseOdooDate($r['next_invoice_date']),
+            'state' => $r['state'] ?? 'draft',
+            'delivery_sla_hours' => $r['delivery_sla_hours'] ?: null,
+            'on_time_target' => $r['on_time_target'] ?: null,
+            'invoice_count' => (int) ($r['invoice_count'] ?? 0),
+            'synced_at' => now(),
+        ]);
+    }
+
+    protected function syncCrmContractLines(array $lineIds): void
+    {
+        if (empty($lineIds)) { CrmContractLine::query()->delete(); return; }
+        $rows = $this->odoo->read('mj.crm.contract.line', $lineIds,
+            ['id', 'contract_id', 'sequence', 'product_id', 'name', 'basis',
+             'quantity', 'price_unit', 'price_subtotal']);
+        $seen = [];
+        foreach ($rows as $l) {
+            $seen[] = $l['id'];
+            CrmContractLine::updateOrCreate(['odoo_id' => $l['id']], [
+                'odoo_contract_id' => OdooService::many2oneId($l['contract_id']) ?? 0,
+                'sequence' => (int) ($l['sequence'] ?? 10),
+                'odoo_product_id' => OdooService::many2oneId($l['product_id']),
+                'product_name' => OdooService::many2oneName($l['product_id']),
+                'name' => $l['name'] ?: null, 'basis' => $l['basis'] ?? 'fixed',
+                'quantity' => (float) ($l['quantity'] ?? 0),
+                'price_unit' => (float) ($l['price_unit'] ?? 0),
+                'price_subtotal' => (float) ($l['price_subtotal'] ?? 0),
+            ]);
+        }
+        CrmContractLine::whereNotIn('odoo_id', $seen ?: [0])->delete();
+    }
+
+    public function refreshCrmContract(int $odooId): ?CrmContract
+    {
+        try {
+            $rows = $this->odoo->read('mj.crm.contract', [$odooId],
+                ['id', 'name', 'partner_id', 'crm_lead_id', 'user_id', 'date_start', 'date_end',
+                 'recurrence', 'auto_renew', 'payment_term_id', 'currency_id', 'amount_recurring',
+                 'next_invoice_date', 'state', 'delivery_sla_hours', 'on_time_target',
+                 'invoice_count', 'line_ids']);
+            if (empty($rows)) return null;
+            $c = $this->writeCrmContract($rows[0]);
+            $this->syncCrmContractLinesFor($odooId, $rows[0]['line_ids'] ?? []);
+            return $c;
+        } catch (Throwable) {
+            return null;
+        }
+    }
+
+    protected function syncCrmContractLinesFor(int $contractOdooId, array $lineIds): void
+    {
+        if (empty($lineIds)) {
+            CrmContractLine::where('odoo_contract_id', $contractOdooId)->delete();
+            return;
+        }
+        $rows = $this->odoo->read('mj.crm.contract.line', $lineIds,
+            ['id', 'contract_id', 'sequence', 'product_id', 'name', 'basis',
+             'quantity', 'price_unit', 'price_subtotal']);
+        $seen = [];
+        foreach ($rows as $l) {
+            $seen[] = $l['id'];
+            CrmContractLine::updateOrCreate(['odoo_id' => $l['id']], [
+                'odoo_contract_id' => OdooService::many2oneId($l['contract_id']) ?? 0,
+                'sequence' => (int) ($l['sequence'] ?? 10),
+                'odoo_product_id' => OdooService::many2oneId($l['product_id']),
+                'product_name' => OdooService::many2oneName($l['product_id']),
+                'name' => $l['name'] ?: null, 'basis' => $l['basis'] ?? 'fixed',
+                'quantity' => (float) ($l['quantity'] ?? 0),
+                'price_unit' => (float) ($l['price_unit'] ?? 0),
+                'price_subtotal' => (float) ($l['price_subtotal'] ?? 0),
+            ]);
+        }
+        CrmContractLine::where('odoo_contract_id', $contractOdooId)
+            ->whereNotIn('odoo_id', $seen ?: [0])->delete();
     }
 
     public function syncEmployeeDocuments(): SyncLog

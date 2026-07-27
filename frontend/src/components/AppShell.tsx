@@ -103,6 +103,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     "/crm": [
       { href: "/crm", label: t("nav.pipeline"), exact: true },
       { href: "/crm/customers", label: t("nav.customers") },
+      { href: "/crm/contracts", label: t("con.nav") },
     ],
     "/fleet": [
       { href: "/fleet", label: t("nav.vehicles"), exact: true },

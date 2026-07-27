@@ -18,6 +18,7 @@ use App\Http\Controllers\Api\V1\CourierDailyController as V1CourierDaily;
 use App\Http\Controllers\Api\V1\HrRequestController as V1HrRequest;
 use App\Http\Controllers\Api\V1\HrAppraisalController as V1HrAppraisal;
 use App\Http\Controllers\Api\V1\TrainingController as V1Training;
+use App\Http\Controllers\Api\V1\CrmContractController as V1CrmContract;
 use App\Http\Controllers\Api\V1\FleetKpiController as V1FleetKpi;
 use App\Http\Controllers\Api\V1\RecruitmentController as V1Recruitment;
 use App\Http\Controllers\MobileApiController;
@@ -271,6 +272,19 @@ Route::prefix('v1')->group(function () {
                 Route::post('/customers',           'storeCustomer');
                 Route::put('/customers/{id}',       'updateCustomer')->whereNumber('id');
             });
+        });
+
+        // Customer service contracts (mj_crm_contract) — gates inside the controller.
+        Route::prefix('crm')->controller(V1CrmContract::class)->middleware('can:crm.view')->group(function () {
+            Route::get('/contracts',       'index');
+            Route::get('/contracts/products', 'products');
+            Route::get('/contracts/{id}',  'show')->whereNumber('id');
+            Route::post('/contracts',      'store');
+            Route::put('/contracts/{id}',  'update')->whereNumber('id');
+            Route::post('/contracts/from-lead/{leadId}', 'fromLead')->whereNumber('leadId');
+            Route::post('/contracts/{id}/invoice', 'invoice')->whereNumber('id');
+            Route::post('/contracts/{id}/{action}', 'action')->whereNumber('id')
+                ->whereIn('action', ['confirm', 'renew', 'close', 'cancel', 'reset']);
         });
 
         Route::prefix('fleet')->controller(V1Fleet::class)->middleware('can:fleet.view')->group(function () {
