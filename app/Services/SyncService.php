@@ -35,6 +35,7 @@ use App\Models\LeaveType;
 use App\Models\Loan;
 use App\Models\LoanLine;
 use App\Models\EmployeeDocument;
+use App\Models\HrRequest;
 use App\Models\Payslip;
 use App\Models\PayslipLine;
 use App\Models\PayslipPayment;
@@ -70,6 +71,7 @@ class SyncService
             'loans'       => $this->syncLoans(),
             'salary_adjustments' => $this->syncSalaryAdjustments(),
             'employee_documents' => $this->syncEmployeeDocuments(),
+            'hr_requests' => $this->syncHrRequests(),
             'warnings'    => $this->syncWarnings(),
             'sick_leaves' => $this->syncSickLeaves(),
             'service_ends' => $this->syncServiceEnds(),
@@ -909,6 +911,63 @@ class SyncService
     }
 
     /** Employee documents — metadata only (the file bytes stay in Odoo's filestore). */
+    /** Employee self-service requests (mj_hr_ess). */
+    public function syncHrRequests(): SyncLog
+    {
+        return $this->runSync('mj.hr.request', function () {
+            $rows = $this->odoo->searchRead('mj.hr.request', [],
+                ['id', 'name', 'employee_id', 'request_type', 'state', 'date_request', 'summary',
+                 'description', 'approver_id', 'manager_note', 'certificate_kind', 'addressed_to',
+                 'certificate_pdf', 'target_department_id', 'last_working_day', 'resign_reason', 'item', 'qty'],
+                2000, 0, 'id desc');
+            $seen = [];
+            foreach ($rows as $r) {
+                $seen[] = $r['id'];
+                $this->writeHrRequest($r);
+            }
+            HrRequest::whereNotIn('odoo_id', $seen ?: [0])->delete();
+            return count($rows);
+        });
+    }
+
+    protected function writeHrRequest(array $r): HrRequest
+    {
+        return HrRequest::updateOrCreate(['odoo_id' => $r['id']], [
+            'name'             => $r['name'] ?: null,
+            'odoo_employee_id' => OdooService::many2oneId($r['employee_id']) ?? 0,
+            'employee_name'    => OdooService::many2oneName($r['employee_id']),
+            'request_type'     => $r['request_type'] ?? 'other',
+            'state'            => $r['state'] ?? 'draft',
+            'date_request'     => $this->parseOdooDate($r['date_request']),
+            'summary'          => $r['summary'] ?: null,
+            'description'      => $r['description'] ?: null,
+            'approver_name'    => OdooService::many2oneName($r['approver_id']),
+            'manager_note'     => $r['manager_note'] ?: null,
+            'certificate_kind' => $r['certificate_kind'] ?: null,
+            'addressed_to'     => $r['addressed_to'] ?: null,
+            'has_certificate'  => !empty($r['certificate_pdf']),
+            'target_department' => OdooService::many2oneName($r['target_department_id']),
+            'last_working_day' => $this->parseOdooDate($r['last_working_day']),
+            'resign_reason'    => $r['resign_reason'] ?: null,
+            'item'             => $r['item'] ?: null,
+            'qty'              => $r['qty'] ?: null,
+            'synced_at'        => now(),
+        ]);
+    }
+
+    public function refreshHrRequest(int $odooId): ?HrRequest
+    {
+        try {
+            $rows = $this->odoo->read('mj.hr.request', [$odooId],
+                ['id', 'name', 'employee_id', 'request_type', 'state', 'date_request', 'summary',
+                 'description', 'approver_id', 'manager_note', 'certificate_kind', 'addressed_to',
+                 'certificate_pdf', 'target_department_id', 'last_working_day', 'resign_reason', 'item', 'qty']);
+            return empty($rows) ? null : $this->writeHrRequest($rows[0]);
+        } catch (Throwable) {
+            return null;
+        }
+    }
+
     public function syncEmployeeDocuments(): SyncLog
     {
         return $this->runSync('hr.employee.document', function () {

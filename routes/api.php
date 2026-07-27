@@ -15,6 +15,7 @@ use App\Http\Controllers\Api\V1\HrContractController as V1HrContract;
 use App\Http\Controllers\Api\V1\OcrController as V1Ocr;
 use App\Http\Controllers\Api\V1\UploadController as V1Upload;
 use App\Http\Controllers\Api\V1\CourierDailyController as V1CourierDaily;
+use App\Http\Controllers\Api\V1\HrRequestController as V1HrRequest;
 use App\Http\Controllers\Api\V1\RecruitmentController as V1Recruitment;
 use App\Http\Controllers\MobileApiController;
 use Illuminate\Support\Facades\Route;
@@ -42,6 +43,19 @@ Route::prefix('v1')->group(function () {
             Route::get('/alerts', 'alerts')->middleware('can:hr.view_all');
         });
         Route::get('/hr/courier-daily', [V1CourierDaily::class, 'index'])->middleware('can:hr.view_all');
+
+        // Employee self-service requests (mj_hr_ess) — scoping inside the controller.
+        Route::prefix('hr')->controller(V1HrRequest::class)->group(function () {
+            Route::get('/requests',              'index');
+            Route::get('/requests/config',       'config');
+            Route::get('/requests/{id}/certificate', 'certificate')->whereNumber('id');
+            Route::post('/requests',             'store');
+            Route::post('/requests/{id}/submit', 'submit')->whereNumber('id');
+            Route::post('/requests/{id}/{action}', 'action')->whereNumber('id')
+                ->whereIn('action', ['approve', 'refuse', 'issue', 'cancel', 'reset']);
+            Route::get('/expenses',  'expenses');
+            Route::post('/expenses', 'storeExpense');
+        });
         Route::prefix('hr')->controller(V1Hr::class)->group(function () {
             Route::get('/leaves',      'leaves');
             Route::get('/leaves/export', 'exportLeaves'); // scoped to own records inside the controller

@@ -81,6 +81,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           ...(can("payslips.view") ? [{ href: "/hr/payslips", label: t("nav.payslips") }] : []),
           ...(can("loans.view") ? [{ href: "/hr/loans", label: t("nav.loans") }] : []),
           { href: "/hr/courier-daily", label: t("cd.nav") },
+          { href: "/hr/requests", label: t("ess.nav") },
           // Departments / companies & branches / offices now live under Settings.
           { href: "/hr/settings", label: t("nav.settings") },
         ]
@@ -93,6 +94,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           { href: "/hr/attendance", label: t("nav.attendance") },
           { href: "/hr/payslips", label: t("nav.my_payslips") },
           { href: "/hr/loans", label: t("nav.my_loans") },
+          { href: "/hr/requests", label: t("ess.nav") },
         ],
     "/crm": [
       { href: "/crm", label: t("nav.pipeline"), exact: true },
