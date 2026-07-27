@@ -62,16 +62,16 @@ export default function ContractsPage() {
 
       {!page ? <Spinner /> : (
         <>
-          <Table head={<><Th>{t("loan.reference")}</Th><Th>{t("con.customer")}</Th><Th>{t("con.recurrence")}</Th><Th>{t("con.amount")}</Th><Th>{t("con.next_invoice")}</Th><Th>{t("con.invoices")}</Th><Th>{t("common.status")}</Th></>}>
+          <Table head={<><Th>{t("loan.reference")}</Th><Th>{t("con.customer")}</Th><Th>{t("con.recurrence")}</Th><Th end>{t("con.amount")}</Th><Th>{t("con.next_invoice")}</Th><Th end>{t("con.invoices")}</Th><Th>{t("common.status")}</Th></>}>
             {page.data.length === 0 && <EmptyRow colSpan={7} />}
             {page.data.map((r) => (
               <tr key={r.id} className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40 cursor-pointer" onClick={() => openDetail(r.id)}>
                 <Td className="font-mono text-xs text-slate-500">{r.name}</Td>
                 <Td className="font-medium text-slate-900 dark:text-slate-100">{r.partner_name}</Td>
                 <Td className="text-xs">{t(`con.rec_${r.recurrence}`)}{r.auto_renew && <span className="ms-1 text-emerald-500" title={t("con.auto_renew")}>↻</span>}</Td>
-                <Td className="tabular-nums">{money(r.amount_recurring)}</Td>
+                <Td end className="tabular-nums">{money(r.amount_recurring)}</Td>
                 <Td className="text-xs tabular-nums">{r.state === "running" ? r.next_invoice_date : "—"}</Td>
-                <Td className="tabular-nums text-xs">{r.invoice_count || "—"}</Td>
+                <Td end className="tabular-nums text-xs">{r.invoice_count || "—"}</Td>
                 <Td><Badge tone={STATE_TONE[r.state] ?? "slate"}>{t(`con.state_${r.state}`)}</Badge></Td>
               </tr>
             ))}
