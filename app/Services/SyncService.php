@@ -19,6 +19,7 @@ use App\Models\FinanceInvoice;
 use App\Models\FleetServiceLog;
 use App\Models\FleetAccident;
 use App\Models\FleetFuelLog;
+use App\Models\FleetOdometerLog;
 use App\Models\FleetInspection;
 use App\Models\FleetInspectionItem;
 use App\Models\FleetInspectionLine;
@@ -804,6 +805,22 @@ class SyncService
             $n++;
         }
         FleetAccident::whereNotIn('odoo_id', $seen ?: [0])->delete();
+
+        // Odometer readings (for distance / cost-per-km — mj_fleet_kpi).
+        $rows = $this->odoo->searchRead('fleet.vehicle.odometer', [],
+            ['id', 'vehicle_id', 'value', 'date'], 5000, 0, 'id desc');
+        $seen = [];
+        foreach ($rows as $r) {
+            $seen[] = $r['id'];
+            FleetOdometerLog::updateOrCreate(['odoo_id' => $r['id']], [
+                'odoo_vehicle_id' => OdooService::many2oneId($r['vehicle_id']) ?? 0,
+                'value'           => $r['value'] ?? 0,
+                'date'            => $this->parseOdooDate($r['date']),
+                'synced_at'       => now(),
+            ]);
+            $n++;
+        }
+        FleetOdometerLog::whereNotIn('odoo_id', $seen ?: [0])->delete();
 
         return $n;
     }

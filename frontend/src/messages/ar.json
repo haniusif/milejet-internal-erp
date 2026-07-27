@@ -659,5 +659,20 @@
   "ess.state_approved": "معتمدة",
   "ess.state_refused": "مرفوضة",
   "ess.state_done": "منجزة",
-  "ess.state_cancelled": "ملغاة"
+  "ess.state_cancelled": "ملغاة",
+  "fkpi.nav": "المؤشرات",
+  "fkpi.title": "أداء الأسطول",
+  "fkpi.total_cost": "إجمالي التكلفة",
+  "fkpi.cost_per_km": "التكلفة / كم",
+  "fkpi.distance": "المسافة",
+  "fkpi.utilization": "معدل الاستخدام",
+  "fkpi.downtime": "التعطل",
+  "fkpi.estimate": "تقديري",
+  "fkpi.by_vehicle": "التكلفة حسب المركبة",
+  "fkpi.cost_by_month": "التكلفة شهرياً",
+  "fkpi.fuel_by_month": "الوقود شهرياً",
+  "fkpi.distance_by_month": "المسافة شهرياً",
+  "fkpi.driver_scorecard": "تقييم السائقين",
+  "fkpi.score": "النتيجة",
+  "fkpi.insufficient": "بيانات عداد غير كافية"
 }

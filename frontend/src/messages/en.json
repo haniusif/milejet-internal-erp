@@ -659,5 +659,20 @@
   "ess.state_approved": "Approved",
   "ess.state_refused": "Refused",
   "ess.state_done": "Done",
-  "ess.state_cancelled": "Cancelled"
+  "ess.state_cancelled": "Cancelled",
+  "fkpi.nav": "KPIs",
+  "fkpi.title": "Fleet performance",
+  "fkpi.total_cost": "Total cost",
+  "fkpi.cost_per_km": "Cost / km",
+  "fkpi.distance": "Distance",
+  "fkpi.utilization": "Utilization",
+  "fkpi.downtime": "Downtime",
+  "fkpi.estimate": "estimate",
+  "fkpi.by_vehicle": "Cost by vehicle",
+  "fkpi.cost_by_month": "Cost by month",
+  "fkpi.fuel_by_month": "Fuel by month",
+  "fkpi.distance_by_month": "Distance by month",
+  "fkpi.driver_scorecard": "Driver scorecard",
+  "fkpi.score": "Score",
+  "fkpi.insufficient": "Insufficient odometer data"
 }

@@ -16,6 +16,7 @@ use App\Http\Controllers\Api\V1\OcrController as V1Ocr;
 use App\Http\Controllers\Api\V1\UploadController as V1Upload;
 use App\Http\Controllers\Api\V1\CourierDailyController as V1CourierDaily;
 use App\Http\Controllers\Api\V1\HrRequestController as V1HrRequest;
+use App\Http\Controllers\Api\V1\FleetKpiController as V1FleetKpi;
 use App\Http\Controllers\Api\V1\RecruitmentController as V1Recruitment;
 use App\Http\Controllers\MobileApiController;
 use Illuminate\Support\Facades\Route;
@@ -245,6 +246,8 @@ Route::prefix('v1')->group(function () {
             Route::get('/fuel',          'fuel');
             Route::get('/accidents',     'accidents');
             Route::get('/alerts',        'alerts');
+            Route::get('/kpi',           [V1FleetKpi::class, 'kpi']);
+            Route::get('/kpi/drivers',   [V1FleetKpi::class, 'drivers']);
             Route::get('/models',        'models');
             Route::get('/categories',    'categories');
             Route::get('/drivers',       'drivers');
