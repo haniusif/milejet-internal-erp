@@ -388,6 +388,11 @@ Route::middleware('auth:sanctum')->prefix('mobile')->group(function () {
     Route::get('/finance/expenses', [V1MobileDomain::class, 'financeExpenses']);
     Route::get('/dashboard',        [V1MobileDomain::class, 'dashboard']);
 
+    // Finance invoice detail — reuse the web FinanceController (read-only).
+    Route::middleware('can:finance.view')->group(function () {
+        Route::get('/finance/invoices/{id}', [V1Finance::class, 'show'])->whereNumber('id');
+    });
+
     // Fleet detail/actions — reuse the web FleetController (reads fleet.view, writes fleet.write).
     Route::middleware('can:fleet.view')->group(function () {
         Route::get('/fleet/vehicles/{id}', [V1Fleet::class, 'vehicle'])->whereNumber('id');
