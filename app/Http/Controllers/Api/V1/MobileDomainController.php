@@ -13,6 +13,7 @@ use App\Models\FinanceInvoice;
 use App\Models\FleetVehicle;
 use App\Models\Leave;
 use App\Models\Payslip;
+use App\Services\OdooService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -43,15 +44,31 @@ class MobileDomainController extends Controller
     public function crmCustomers(Request $request): JsonResponse
     {
         if (!$request->user()->can('crm.view')) return response()->json([]);
-        $rows = CrmCustomer::where('active', true)->orderBy('name')->limit(200)->get()
-            ->map(fn ($c) => [
+        $cached = CrmCustomer::where('active', true)->orderBy('name')->limit(200)->get();
+        if ($cached->isNotEmpty()) {
+            $rows = $cached->map(fn ($c) => [
                 'id'                  => $c->id,
                 'name'                => $c->name,
                 'city'                => $c->city ?: '—',
                 'shipments_per_month' => 0, // not tracked per-customer
                 'since'               => $c->created_at?->toDateString(),
             ]);
-        return response()->json($rows);
+            return response()->json($rows);
+        }
+        // No partners flagged as customers — fall back to company partners from Odoo.
+        try {
+            $partners = app(OdooService::class)->searchRead('res.partner',
+                [['is_company', '=', true]], ['id', 'name', 'city', 'create_date'], 200, 0, 'name');
+        } catch (\Throwable) {
+            $partners = [];
+        }
+        return response()->json(array_map(fn ($p) => [
+            'id'                  => $p['id'],
+            'name'                => $p['name'] ?: '—',
+            'city'                => ($p['city'] ?? false) ?: '—',
+            'shipments_per_month' => 0,
+            'since'               => !empty($p['create_date']) ? substr($p['create_date'], 0, 10) : null,
+        ], $partners));
     }
 
     public function fleetVehicles(Request $request): JsonResponse
