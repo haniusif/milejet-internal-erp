@@ -388,6 +388,17 @@ Route::middleware('auth:sanctum')->prefix('mobile')->group(function () {
     Route::get('/finance/expenses', [V1MobileDomain::class, 'financeExpenses']);
     Route::get('/dashboard',        [V1MobileDomain::class, 'dashboard']);
 
+    // Fleet detail/actions — reuse the web FleetController (reads fleet.view, writes fleet.write).
+    Route::middleware('can:fleet.view')->group(function () {
+        Route::get('/fleet/vehicles/{id}', [V1Fleet::class, 'vehicle'])->whereNumber('id');
+        Route::get('/fleet/fuel',          [V1Fleet::class, 'fuel']);
+        Route::get('/fleet/accidents',     [V1Fleet::class, 'accidents']);
+        Route::middleware('can:fleet.write')->group(function () {
+            Route::post('/fleet/vehicles/{id}/fuel',     [V1Fleet::class, 'addFuel'])->whereNumber('id');
+            Route::post('/fleet/vehicles/{id}/odometer', [V1Fleet::class, 'updateOdometer'])->whereNumber('id');
+        });
+    });
+
     // CRM detail/actions — reuse the web CrmController (reads crm.view, writes crm.write).
     Route::middleware('can:crm.view')->group(function () {
         Route::get('/crm/config',        [V1Crm::class, 'config']);
