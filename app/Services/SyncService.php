@@ -46,6 +46,7 @@ use App\Models\TrainingEnrollment;
 use App\Models\TrainingNeed;
 use App\Models\CrmContract;
 use App\Models\CrmContractLine;
+use App\Models\CrmTicket;
 use App\Models\Payslip;
 use App\Models\PayslipLine;
 use App\Models\PayslipPayment;
@@ -96,6 +97,7 @@ class SyncService
             'recruitment' => $this->syncRecruitment(),
             'crm'         => $this->syncCrm(),
             'crm_contracts' => $this->syncCrmContracts(),
+            'crm_tickets' => $this->syncCrmTickets(),
             'fleet'       => $this->syncFleet(),
             'finance'     => $this->syncFinance(),
         ];
@@ -1429,6 +1431,59 @@ class SyncService
         }
         CrmContractLine::where('odoo_contract_id', $contractOdooId)
             ->whereNotIn('odoo_id', $seen ?: [0])->delete();
+    }
+
+    // --- CRM helpdesk tickets (mj_crm_helpdesk) ---
+
+    private const TICKET_FIELDS = ['id', 'name', 'subject', 'partner_id', 'contract_id', 'description',
+        'category', 'priority', 'source', 'team_id', 'user_id', 'stage', 'sla_hours', 'sla_deadline',
+        'sla_state', 'date_open', 'date_closed', 'resolution', 'satisfaction', 'related_ref'];
+
+    public function syncCrmTickets(): SyncLog
+    {
+        return $this->runSync('mj.crm.ticket', function () {
+            $rows = $this->odoo->searchRead('mj.crm.ticket', [], self::TICKET_FIELDS, 5000, 0, 'id desc');
+            $seen = [];
+            foreach ($rows as $r) {
+                $seen[] = $r['id'];
+                $this->writeCrmTicket($r);
+            }
+            CrmTicket::whereNotIn('odoo_id', $seen ?: [0])->delete();
+            return count($rows);
+        });
+    }
+
+    protected function writeCrmTicket(array $r): CrmTicket
+    {
+        return CrmTicket::updateOrCreate(['odoo_id' => $r['id']], [
+            'name' => $r['name'] ?: null, 'subject' => $r['subject'] ?: '',
+            'odoo_partner_id' => OdooService::many2oneId($r['partner_id']),
+            'partner_name' => OdooService::many2oneName($r['partner_id']),
+            'odoo_contract_id' => OdooService::many2oneId($r['contract_id']),
+            'contract_name' => OdooService::many2oneName($r['contract_id']),
+            'description' => $r['description'] ?: null,
+            'category' => $r['category'] ?? 'other', 'priority' => $r['priority'] ?? 'normal',
+            'source' => $r['source'] ?: null, 'team_name' => OdooService::many2oneName($r['team_id']),
+            'odoo_user_id' => OdooService::many2oneId($r['user_id']),
+            'user_name' => OdooService::many2oneName($r['user_id']),
+            'stage' => $r['stage'] ?? 'new', 'sla_hours' => $r['sla_hours'] ?: null,
+            'sla_deadline' => $this->parseOdooDate($r['sla_deadline']),
+            'sla_state' => $r['sla_state'] ?? 'on_track',
+            'date_open' => $this->parseOdooDate($r['date_open']),
+            'date_closed' => $this->parseOdooDate($r['date_closed']),
+            'resolution' => $r['resolution'] ?: null, 'satisfaction' => $r['satisfaction'] ?: null,
+            'related_ref' => $r['related_ref'] ?: null, 'synced_at' => now(),
+        ]);
+    }
+
+    public function refreshCrmTicket(int $odooId): ?CrmTicket
+    {
+        try {
+            $rows = $this->odoo->read('mj.crm.ticket', [$odooId], self::TICKET_FIELDS);
+            return empty($rows) ? null : $this->writeCrmTicket($rows[0]);
+        } catch (Throwable) {
+            return null;
+        }
     }
 
     public function syncEmployeeDocuments(): SyncLog

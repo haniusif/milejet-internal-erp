@@ -19,6 +19,7 @@ use App\Http\Controllers\Api\V1\HrRequestController as V1HrRequest;
 use App\Http\Controllers\Api\V1\HrAppraisalController as V1HrAppraisal;
 use App\Http\Controllers\Api\V1\TrainingController as V1Training;
 use App\Http\Controllers\Api\V1\CrmContractController as V1CrmContract;
+use App\Http\Controllers\Api\V1\CrmTicketController as V1CrmTicket;
 use App\Http\Controllers\Api\V1\FleetKpiController as V1FleetKpi;
 use App\Http\Controllers\Api\V1\RecruitmentController as V1Recruitment;
 use App\Http\Controllers\MobileApiController;
@@ -285,6 +286,18 @@ Route::prefix('v1')->group(function () {
             Route::post('/contracts/{id}/invoice', 'invoice')->whereNumber('id');
             Route::post('/contracts/{id}/{action}', 'action')->whereNumber('id')
                 ->whereIn('action', ['confirm', 'renew', 'close', 'cancel', 'reset']);
+        });
+
+        // Support tickets (mj_crm_helpdesk) — gates inside the controller.
+        Route::prefix('crm')->controller(V1CrmTicket::class)->middleware('can:crm.view')->group(function () {
+            Route::get('/tickets',        'index');
+            Route::get('/tickets/config', 'config');
+            Route::get('/tickets/stats',  'stats');
+            Route::get('/tickets/{id}',   'show')->whereNumber('id');
+            Route::post('/tickets',       'store');
+            Route::put('/tickets/{id}',   'update')->whereNumber('id');
+            Route::post('/tickets/{id}/{action}', 'action')->whereNumber('id')
+                ->whereIn('action', ['assign', 'wait', 'resume', 'resolve', 'close', 'reopen', 'cancel', 'reset']);
         });
 
         Route::prefix('fleet')->controller(V1Fleet::class)->middleware('can:fleet.view')->group(function () {
