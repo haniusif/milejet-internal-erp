@@ -26,6 +26,7 @@ export default function LeadDetailPage() {
   const [cfg, setCfg] = useState<CrmConfig | null>(null);
   const [form, setForm] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
+  const [creatingContract, setCreatingContract] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
 
@@ -78,6 +79,16 @@ export default function LeadDetailPage() {
     catch (e) { setError(e instanceof ApiError ? e.message : t("common.error")); }
   }
 
+  async function createContract() {
+    setCreatingContract(true); setError(null); setOk(null);
+    try {
+      await api.post(`/crm/contracts/from-lead/${id}`, {});
+      router.push("/crm/contracts");
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : t("common.error"));
+    } finally { setCreatingContract(false); }
+  }
+
   if (!lead) return error ? <ErrorBox message={error} /> : <Spinner />;
 
   return (
@@ -95,6 +106,15 @@ export default function LeadDetailPage() {
         </Badge>
         {lead.probability != null && <span className="text-xs text-slate-500">{lead.probability}%</span>}
         {lead.tag_names && <span className="text-xs text-brand-500">{lead.tag_names}</span>}
+        {writable && lead.customer && (
+          <button
+            onClick={createContract}
+            disabled={creatingContract}
+            title={t("crm.create_contract_hint")}
+            className="h-8 px-3 rounded-md bg-brand-600 hover:bg-brand-700 text-white text-xs font-medium disabled:opacity-50">
+            {creatingContract ? "…" : `+ ${t("crm.create_contract")}`}
+          </button>
+        )}
         {writable && lead.active && (
           <span className="ms-auto flex gap-2">
             <button onClick={() => act("won")} className="h-8 px-3 rounded-md bg-emerald-600 text-white text-xs">{t("crm.mark_won")}</button>

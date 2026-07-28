@@ -120,6 +120,8 @@
   "crm.mark_won": "Mark won",
   "crm.mark_lost": "Mark lost",
   "crm.restore": "Restore",
+  "crm.create_contract": "Create contract",
+  "crm.create_contract_hint": "Start a service contract for this customer",
   "crm.customer": "Customer",
   "crm.contact": "Contact",
   "crm.deadline": "Deadline",

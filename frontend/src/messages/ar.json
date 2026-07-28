@@ -120,6 +120,8 @@
   "crm.mark_won": "تحديد كمكتسبة",
   "crm.mark_lost": "تحديد كخاسرة",
   "crm.restore": "استعادة",
+  "crm.create_contract": "إنشاء عقد",
+  "crm.create_contract_hint": "بدء عقد خدمة لهذا العميل",
   "crm.customer": "العميل",
   "crm.contact": "جهة الاتصال",
   "crm.deadline": "الموعد النهائي",
