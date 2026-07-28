@@ -386,6 +386,7 @@ Route::middleware('auth:sanctum')->prefix('mobile')->group(function () {
     Route::get('/fleet/vehicles',   [V1MobileDomain::class, 'fleetVehicles']);
     Route::get('/finance/invoices', [V1MobileDomain::class, 'financeInvoices']);
     Route::get('/finance/expenses', [V1MobileDomain::class, 'financeExpenses']);
+    Route::get('/dashboard',        [V1MobileDomain::class, 'dashboard']);
 
     Route::get('/notifications', [MobileApiController::class, 'notifications']);
     Route::post('/notifications/read', [MobileApiController::class, 'markNotificationsRead']);

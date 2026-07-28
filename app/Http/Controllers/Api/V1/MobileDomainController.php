@@ -3,10 +3,17 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
+use App\Models\Attendance;
+use App\Models\Contract;
 use App\Models\CrmCustomer;
 use App\Models\CrmLead;
+use App\Models\Department;
+use App\Models\Employee;
 use App\Models\FinanceInvoice;
 use App\Models\FleetVehicle;
+use App\Models\Leave;
+use App\Models\Payslip;
+use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -93,6 +100,52 @@ class MobileDomainController extends Controller
                 'date'     => $i->invoice_date?->toDateString(),
             ]);
         return response()->json($rows);
+    }
+
+    /** HR dashboard — real stats only (manager view). */
+    public function dashboard(Request $request): JsonResponse
+    {
+        $empty = [
+            'total_employees' => 0, 'departments' => 0, 'on_leave_today' => 0,
+            'pending_leaves' => 0, 'present_today' => 0, 'attendance_rate' => 0,
+            'contracts_expiring' => 0, 'iqamas_expiring' => 0,
+            'payroll_month' => 0, 'payroll_month_label' => null,
+            'attendance_trend' => [], 'headcount_by_dept' => [],
+        ];
+        if (!$request->user()->can('hr.view_all')) {
+            return response()->json($empty);
+        }
+
+        $today = now()->startOfDay();
+        $deadline = $today->copy()->addDays(60);
+        $active = Employee::where('active', true)->count();
+        $present = Attendance::whereDate('check_in', today())->count();
+        $lastPay = ($d = Payslip::max('date_from')) ? Carbon::parse($d)->startOfMonth() : $today->copy()->startOfMonth();
+
+        return response()->json([
+            'total_employees'  => $active,
+            'departments'      => Department::count(),
+            'on_leave_today'   => Leave::where('state', 'validate')
+                                    ->whereDate('date_from', '<=', $today)
+                                    ->whereDate('date_to', '>=', $today)->count(),
+            'pending_leaves'   => Leave::where('state', 'confirm')->count(),
+            'present_today'    => $present,
+            'attendance_rate'  => $active ? (int) round($present / $active * 100) : 0,
+            'contracts_expiring' => Contract::where('state', 'open')->whereNotNull('date_end')
+                                        ->whereBetween('date_end', [$today, $deadline])->count(),
+            'iqamas_expiring'  => Employee::where('active', true)->whereNotNull('iqama_expiry_date')
+                                        ->where('iqama_expiry_date', '<=', $deadline)->count(),
+            'payroll_month'    => (float) Payslip::whereBetween('date_from',
+                                        [$lastPay, $lastPay->copy()->endOfMonth()])->sum('net_total'),
+            'payroll_month_label' => $lastPay->format('Y-m'),
+            'attendance_trend' => collect(range(6, 0))->map(fn ($i) => [
+                'label' => now()->subDays($i)->format('D'),
+                'value' => Attendance::whereDate('check_in', now()->subDays($i)->toDateString())->count(),
+            ])->values(),
+            'headcount_by_dept' => Employee::where('active', true)->whereNotNull('department_name')
+                ->selectRaw('department_name AS dept, COUNT(*) AS count')
+                ->groupBy('department_name')->orderByDesc('count')->limit(8)->get(),
+        ]);
     }
 
     // ── helpers ──
