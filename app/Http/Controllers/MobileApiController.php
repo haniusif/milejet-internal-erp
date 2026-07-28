@@ -608,6 +608,38 @@ class MobileApiController extends Controller
         return response()->json($this->formatPayslip($payslip, withLines: true));
     }
 
+    // ─── Loans (employee draft request → mj_loan) ────────────────
+
+    public function requestLoan(Request $request): JsonResponse
+    {
+        $empId = $request->user()->employeeRecord()?->odoo_id;
+        if (!$empId) {
+            return response()->json(['message' => __('No employee record linked to your account.')], 422);
+        }
+        $data = $request->validate([
+            'amount' => 'required|numeric|min:1',
+            'months' => 'nullable|integer|min:1|max:60',
+            'reason' => 'nullable|string|max:255',
+        ]);
+        $amount = round((float) $data['amount'], 2);
+        $months = (int) ($data['months'] ?? 0);
+        $payload = ['employee_id' => $empId, 'amount' => $amount, 'date' => now()->toDateString()];
+        if ($months > 0) {
+            $payload['installment'] = round($amount / $months, 2);
+        }
+        if (!empty($data['reason'])) {
+            $payload['reason'] = $data['reason'];
+        }
+        try {
+            // Create a DRAFT request only — HR reviews/approves later (no payroll effect yet).
+            $odooId = $this->odoo->create('hr.loan', $payload);
+            app(\App\Services\SyncService::class)->refreshLoan($odooId);
+        } catch (RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+        return response()->json(['data' => ['odoo_id' => $odooId]], 201);
+    }
+
     // ─── Notifications (in-app feed backed by the notifications table) ───
 
     public function notifications(Request $request): JsonResponse

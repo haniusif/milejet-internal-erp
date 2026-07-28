@@ -396,6 +396,10 @@ Route::middleware('auth:sanctum')->prefix('mobile')->group(function () {
     Route::post('/training/enroll',      [V1Training::class, 'enroll']);
     Route::get('/training/enrollments/{id}/certificate', [V1Training::class, 'certificate'])->whereNumber('id');
 
+    // Employee loans (mj_loan) — read own; request a draft loan.
+    Route::get('/loans',  [V1Loan::class, 'index']);
+    Route::post('/loans', [MobileApiController::class, 'requestLoan']);
+
     // Employee documents (mj_hr_documents)
     Route::get('/documents',             [V1HrDocuments::class, 'documents']);
     Route::get('/documents/{id}/download', [V1HrDocuments::class, 'downloadDocument'])->whereNumber('id');
