@@ -365,4 +365,36 @@ Route::middleware('auth:sanctum')->prefix('mobile')->group(function () {
     Route::get('/payslips/{id}', [MobileApiController::class, 'payslip'])->whereNumber('id');
 
     Route::get('/notifications', [MobileApiController::class, 'notifications']);
+
+    // Push device registration (FCM)
+    Route::post('/device-token',   [MobileApiController::class, 'registerDevice']);
+    Route::delete('/device-token', [MobileApiController::class, 'unregisterDevice']);
+
+    // Gap-fill: reuse the existing employee-scoped controllers (same Sanctum guard,
+    // so scoping/validation is identical to the web app — single source of truth).
+    // ESS requests (mj_hr_ess)
+    Route::get('/requests',              [V1HrRequest::class, 'index']);
+    Route::get('/requests/config',       [V1HrRequest::class, 'config']);
+    Route::post('/requests',             [V1HrRequest::class, 'store']);
+    Route::post('/requests/{id}/submit', [V1HrRequest::class, 'submit'])->whereNumber('id');
+    Route::post('/requests/{id}/cancel', [V1HrRequest::class, 'action'])->whereNumber('id')->defaults('action', 'cancel');
+    Route::get('/requests/{id}/certificate', [V1HrRequest::class, 'certificate'])->whereNumber('id');
+
+    // Performance appraisals (mj_hr_performance) — self-assessment
+    Route::get('/appraisals',            [V1HrAppraisal::class, 'index']);
+    Route::get('/appraisals/{id}',       [V1HrAppraisal::class, 'show'])->whereNumber('id');
+    Route::put('/appraisals/{id}/lines', [V1HrAppraisal::class, 'updateLines'])->whereNumber('id');
+    Route::post('/appraisals/{id}/submit', [V1HrAppraisal::class, 'action'])->whereNumber('id')->defaults('action', 'submit');
+    Route::get('/recognition',           [V1HrAppraisal::class, 'recognitions']);
+
+    // Training (mj_hr_training)
+    Route::get('/training',              [V1Training::class, 'myTraining']);
+    Route::get('/training/courses',      [V1Training::class, 'courses']);
+    Route::get('/training/sessions',     [V1Training::class, 'sessions']);
+    Route::post('/training/enroll',      [V1Training::class, 'enroll']);
+    Route::get('/training/enrollments/{id}/certificate', [V1Training::class, 'certificate'])->whereNumber('id');
+
+    // Employee documents (mj_hr_documents)
+    Route::get('/documents',             [V1HrDocuments::class, 'documents']);
+    Route::get('/documents/{id}/download', [V1HrDocuments::class, 'downloadDocument'])->whereNumber('id');
 });

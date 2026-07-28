@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Attendance;
+use App\Models\DeviceToken;
 use App\Models\Employee;
 use App\Models\Leave;
 use App\Models\LeaveType;
@@ -559,11 +560,34 @@ class MobileApiController extends Controller
         return response()->json($this->formatPayslip($payslip, withLines: true));
     }
 
-    // ─── Notifications (stub — extend later) ─────────────────
+    // ─── Notifications (stub — real feed + FCM send land with phase-7 slice 3) ───
 
     public function notifications(Request $request): JsonResponse
     {
         return response()->json([]);
+    }
+
+    // ─── Push device registration (FCM) ──────────────────────
+
+    public function registerDevice(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'token'    => 'required|string|max:512',
+            'platform' => 'nullable|in:android,ios',
+        ]);
+        // A token is unique to a device; move it to the current user if it reappears.
+        DeviceToken::updateOrCreate(
+            ['token' => $data['token']],
+            ['user_id' => $request->user()->id, 'platform' => $data['platform'] ?? 'android', 'last_seen_at' => now()],
+        );
+        return response()->json(['status' => 'registered']);
+    }
+
+    public function unregisterDevice(Request $request): JsonResponse
+    {
+        $data = $request->validate(['token' => 'required|string|max:512']);
+        DeviceToken::where('token', $data['token'])->where('user_id', $request->user()->id)->delete();
+        return response()->json(['status' => 'unregistered']);
     }
 
     // ─── Helpers ─────────────────────────────────────────────
