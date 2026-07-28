@@ -397,4 +397,11 @@ Route::middleware('auth:sanctum')->prefix('mobile')->group(function () {
     // Employee documents (mj_hr_documents)
     Route::get('/documents',             [V1HrDocuments::class, 'documents']);
     Route::get('/documents/{id}/download', [V1HrDocuments::class, 'downloadDocument'])->whereNumber('id');
+
+    // Manager approvals — inbox + reuse the existing gated approve/refuse actions.
+    Route::get('/approvals', [MobileApiController::class, 'approvals']);
+    Route::post('/approvals/leaves/{id}/approve', [V1Hr::class, 'approveLeave'])->whereNumber('id')->middleware('can:leaves.approve');
+    Route::post('/approvals/leaves/{id}/refuse',  [V1Hr::class, 'refuseLeave'])->whereNumber('id')->middleware('can:leaves.approve');
+    Route::post('/approvals/requests/{id}/approve', [V1HrRequest::class, 'action'])->whereNumber('id')->defaults('action', 'approve')->middleware('can:hr.view_all');
+    Route::post('/approvals/requests/{id}/refuse',  [V1HrRequest::class, 'action'])->whereNumber('id')->defaults('action', 'refuse')->middleware('can:hr.view_all');
 });

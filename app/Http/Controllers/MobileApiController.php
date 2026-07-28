@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Attendance;
 use App\Models\DeviceToken;
 use App\Models\Employee;
+use App\Models\HrRequest;
 use App\Models\Leave;
 use App\Models\LeaveType;
 use App\Models\Payslip;
@@ -132,6 +133,50 @@ class MobileApiController extends Controller
             'job_title'  => $emp?->job_title,
             'department' => $emp?->department_name,
             'avatar'     => $emp?->image_small,
+            'can_approve' => $user->can('leaves.approve') || $user->can('hr.view_all'),
+        ]);
+    }
+
+    // ─── Manager approvals inbox ─────────────────────────────────
+
+    public function approvals(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        $canLeaves = $user->can('leaves.approve');
+        $canRequests = $user->can('hr.view_all');
+        if (!$canLeaves && !$canRequests) {
+            abort(403);
+        }
+
+        $leaves = $canLeaves
+            ? Leave::where('state', 'confirm')->orderByDesc('date_from')->limit(100)->get()
+                ->map(fn ($l) => [
+                    'id'            => $l->id,
+                    'employee_name' => $l->employee_name,
+                    'leave_type'    => $l->leave_type_name,
+                    'date_from'     => $l->date_from?->toDateString(),
+                    'date_to'       => $l->date_to?->toDateString(),
+                    'days'          => $l->number_of_days,
+                    'reason'        => $l->description,
+                ])->values()
+            : [];
+
+        $requests = $canRequests
+            ? HrRequest::where('state', 'submitted')->orderByDesc('date_request')->limit(100)->get()
+                ->map(fn ($r) => [
+                    'id'            => $r->id,
+                    'name'          => $r->name,
+                    'employee_name' => $r->employee_name,
+                    'request_type'  => $r->request_type,
+                    'summary'       => $r->summary,
+                    'date'          => $r->date_request?->toDateString(),
+                ])->values()
+            : [];
+
+        return response()->json([
+            'leaves'   => $leaves,
+            'requests' => $requests,
+            'count'    => count($leaves) + count($requests),
         ]);
     }
 
