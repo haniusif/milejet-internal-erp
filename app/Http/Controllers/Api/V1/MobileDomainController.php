@@ -55,10 +55,18 @@ class MobileDomainController extends Controller
             ]);
             return response()->json($rows);
         }
-        // No partners flagged as customers — fall back to company partners from Odoo.
+        // No partners flagged as customers — fall back to company partners from Odoo,
+        // excluding the partner record(s) of our own res.company.
         try {
-            $partners = app(OdooService::class)->searchRead('res.partner',
-                [['is_company', '=', true]], ['id', 'name', 'city', 'create_date'], 200, 0, 'name');
+            $odoo = app(OdooService::class);
+            $ownIds = array_values(array_filter(array_map(
+                fn ($c) => OdooService::many2oneId($c['partner_id'] ?? false),
+                $odoo->searchRead('res.company', [], ['partner_id'], 20)
+            )));
+            $domain = [['is_company', '=', true]];
+            if ($ownIds) $domain[] = ['id', 'not in', $ownIds];
+            $partners = $odoo->searchRead('res.partner', $domain,
+                ['id', 'name', 'city', 'create_date'], 200, 0, 'name');
         } catch (\Throwable) {
             $partners = [];
         }
