@@ -20,6 +20,7 @@ use App\Http\Controllers\Api\V1\HrAppraisalController as V1HrAppraisal;
 use App\Http\Controllers\Api\V1\TrainingController as V1Training;
 use App\Http\Controllers\Api\V1\CrmContractController as V1CrmContract;
 use App\Http\Controllers\Api\V1\CrmTicketController as V1CrmTicket;
+use App\Http\Controllers\Api\V1\NewsController as V1News;
 use App\Http\Controllers\Api\V1\FleetKpiController as V1FleetKpi;
 use App\Http\Controllers\Api\V1\RecruitmentController as V1Recruitment;
 use App\Http\Controllers\MobileApiController;
@@ -60,6 +61,14 @@ Route::prefix('v1')->group(function () {
                 ->whereIn('action', ['approve', 'refuse', 'issue', 'cancel', 'reset']);
             Route::get('/expenses',  'expenses');
             Route::post('/expenses', 'storeExpense');
+        });
+
+        // Company news / announcements (Laravel-only) — read open, manage = hr.view_all.
+        Route::prefix('hr')->controller(V1News::class)->group(function () {
+            Route::get('/news',        'index');
+            Route::post('/news',       'store');
+            Route::put('/news/{id}',   'update')->whereNumber('id');
+            Route::delete('/news/{id}', 'destroy')->whereNumber('id');
         });
 
         // Performance appraisals (mj_hr_performance) — scoping inside the controller.
@@ -363,6 +372,8 @@ Route::middleware('auth:sanctum')->prefix('mobile')->group(function () {
 
     Route::get('/payslips',     [MobileApiController::class, 'payslips']);
     Route::get('/payslips/{id}', [MobileApiController::class, 'payslip'])->whereNumber('id');
+
+    Route::get('/news', [V1News::class, 'feed']);
 
     Route::get('/notifications', [MobileApiController::class, 'notifications']);
     Route::post('/notifications/read', [MobileApiController::class, 'markNotificationsRead']);

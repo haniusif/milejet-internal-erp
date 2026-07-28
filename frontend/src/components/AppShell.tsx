@@ -84,6 +84,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           { href: "/hr/requests", label: t("ess.nav") },
           { href: "/hr/appraisals", label: t("perf.nav") },
           { href: "/hr/training", label: t("tr.nav") },
+          { href: "/hr/news", label: t("news.nav") },
           // Departments / companies & branches / offices now live under Settings.
           { href: "/hr/settings", label: t("nav.settings") },
         ]
