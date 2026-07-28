@@ -137,6 +137,11 @@ class MobileApiController extends Controller
             'department' => $emp?->department_name,
             'avatar'     => $emp?->image_small,
             'can_approve' => $user->can('leaves.approve') || $user->can('hr.view_all'),
+            'modules'    => [
+                'crm'     => $user->can('crm.view'),
+                'fleet'   => $user->can('fleet.view'),
+                'finance' => $user->can('finance.view'),
+            ],
         ]);
     }
 
