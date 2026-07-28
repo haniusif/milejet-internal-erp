@@ -46,4 +46,12 @@ return [
         'tesseract_langs' => env('OCR_TESSERACT_LANGS', 'ara+eng'),
     ],
 
+    // Firebase Cloud Messaging (mobile push). Sending is a no-op until a service
+    // account is configured. FCM_CREDENTIALS = absolute path to the Firebase
+    // service-account JSON; project_id is read from it (or FCM_PROJECT_ID).
+    'fcm' => [
+        'credentials' => env('FCM_CREDENTIALS'),        // path to service-account .json
+        'project_id'  => env('FCM_PROJECT_ID'),         // optional override
+    ],
+
 ];

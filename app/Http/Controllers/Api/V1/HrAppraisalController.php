@@ -224,6 +224,9 @@ class HrAppraisalController extends Controller
                 'message' => $data['message'],
             ]));
             $this->sync->refreshRecognition($odooId);
+            // Ping the recognized employee's phone (no-op if they have no device/user).
+            app(\App\Services\NotificationService::class)->notifyEmployee(
+                (int) $data['employee_id'], 'recognition', __('You received recognition'), $data['message']);
         } catch (RuntimeException $e) {
             return response()->json(['message' => $e->getMessage()], 422);
         }

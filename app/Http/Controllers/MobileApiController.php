@@ -6,6 +6,9 @@ use App\Models\Attendance;
 use App\Models\DeviceToken;
 use App\Models\Employee;
 use App\Models\HrRequest;
+use App\Models\Notification;
+use App\Services\NotificationService;
+use App\Services\PushService;
 use App\Models\Leave;
 use App\Models\LeaveType;
 use App\Models\Payslip;
@@ -605,11 +608,41 @@ class MobileApiController extends Controller
         return response()->json($this->formatPayslip($payslip, withLines: true));
     }
 
-    // ─── Notifications (stub — real feed + FCM send land with phase-7 slice 3) ───
+    // ─── Notifications (in-app feed backed by the notifications table) ───
 
     public function notifications(Request $request): JsonResponse
     {
-        return response()->json([]);
+        $rows = Notification::where('user_id', $request->user()->id)
+            ->orderByDesc('id')->limit(100)->get()
+            ->map(fn ($n) => [
+                'id'         => $n->id,
+                'title'      => $n->title,
+                'body'       => $n->body ?? '',
+                'type'       => $n->type,
+                'read'       => $n->read_at !== null,
+                'created_at' => $n->created_at->toIso8601String(),
+            ]);
+        return response()->json($rows);
+    }
+
+    public function markNotificationsRead(Request $request): JsonResponse
+    {
+        Notification::where('user_id', $request->user()->id)
+            ->whereNull('read_at')->update(['read_at' => now()]);
+        return response()->json(['status' => 'ok']);
+    }
+
+    /** Self-test: stores a notification and pushes to this user's devices. */
+    public function testPush(Request $request): JsonResponse
+    {
+        $note = app(NotificationService::class)->notify(
+            $request->user(), 'info', 'Test notification', 'Your push pipeline is working.', ['test' => true]);
+        return response()->json([
+            'status'         => 'sent',
+            'notification_id' => $note->id,
+            'fcm_configured' => app(PushService::class)->isConfigured(),
+            'devices'        => DeviceToken::where('user_id', $request->user()->id)->count(),
+        ]);
     }
 
     // ─── Push device registration (FCM) ──────────────────────

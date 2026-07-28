@@ -365,6 +365,8 @@ Route::middleware('auth:sanctum')->prefix('mobile')->group(function () {
     Route::get('/payslips/{id}', [MobileApiController::class, 'payslip'])->whereNumber('id');
 
     Route::get('/notifications', [MobileApiController::class, 'notifications']);
+    Route::post('/notifications/read', [MobileApiController::class, 'markNotificationsRead']);
+    Route::post('/notifications/test', [MobileApiController::class, 'testPush']);
 
     // Push device registration (FCM)
     Route::post('/device-token',   [MobileApiController::class, 'registerDevice']);
