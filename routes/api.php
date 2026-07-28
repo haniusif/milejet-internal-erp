@@ -21,6 +21,7 @@ use App\Http\Controllers\Api\V1\TrainingController as V1Training;
 use App\Http\Controllers\Api\V1\CrmContractController as V1CrmContract;
 use App\Http\Controllers\Api\V1\CrmTicketController as V1CrmTicket;
 use App\Http\Controllers\Api\V1\NewsController as V1News;
+use App\Http\Controllers\Api\V1\MobileDomainController as V1MobileDomain;
 use App\Http\Controllers\Api\V1\FleetKpiController as V1FleetKpi;
 use App\Http\Controllers\Api\V1\RecruitmentController as V1Recruitment;
 use App\Http\Controllers\MobileApiController;
@@ -378,6 +379,13 @@ Route::middleware('auth:sanctum')->prefix('mobile')->group(function () {
     Route::get('/payslips/{id}', [MobileApiController::class, 'payslip'])->whereNumber('id');
 
     Route::get('/news', [V1News::class, 'feed']);
+
+    // CRM / Fleet / Finance domain feeds (read-only, gated by view ability).
+    Route::get('/crm/leads',        [V1MobileDomain::class, 'crmLeads']);
+    Route::get('/crm/customers',    [V1MobileDomain::class, 'crmCustomers']);
+    Route::get('/fleet/vehicles',   [V1MobileDomain::class, 'fleetVehicles']);
+    Route::get('/finance/invoices', [V1MobileDomain::class, 'financeInvoices']);
+    Route::get('/finance/expenses', [V1MobileDomain::class, 'financeExpenses']);
 
     Route::get('/notifications', [MobileApiController::class, 'notifications']);
     Route::post('/notifications/read', [MobileApiController::class, 'markNotificationsRead']);
