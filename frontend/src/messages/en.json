@@ -19,6 +19,7 @@
   "nav.invoices": "Invoices",
   "nav.bills": "Bills",
   "auth.sign_in": "Sign in",
+  "auth.download_app": "Download Android app",
   "auth.email": "Email",
   "auth.password": "Password",
   "auth.signing_in": "Signing in…",

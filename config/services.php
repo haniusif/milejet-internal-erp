@@ -54,4 +54,11 @@ return [
         'project_id'  => env('FCM_PROJECT_ID'),         // optional override
     ],
 
+    // Android app download served on the login page. Drop the built release APK
+    // at this path (default storage/app/apk/milejet.apk) and the button appears.
+    'apk' => [
+        'path'    => env('APK_PATH', storage_path('app/apk/milejet.apk')),
+        'version' => env('APK_VERSION'),
+    ],
+
 ];

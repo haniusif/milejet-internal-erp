@@ -30,6 +30,10 @@ use Illuminate\Support\Facades\Route;
  * ─── v1 — SPA API (Sanctum stateful cookies) ───────────────────────────
  * Consumed by the Next.js frontend. Role scoping mirrors the web routes.
  */
+// Public Android app download (shown on the login page).
+Route::get('/download/app', [App\Http\Controllers\AppDownloadController::class, 'download']);
+Route::get('/download/app/info', [App\Http\Controllers\AppDownloadController::class, 'info']);
+
 Route::prefix('v1')->group(function () {
     Route::post('/auth/login', [V1Auth::class, 'login'])->middleware('throttle:10,1');
 

@@ -17,10 +17,18 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [apk, setApk] = useState<{ available: boolean; size_mb?: number } | null>(null);
 
   useEffect(() => {
     if (!loading && user) router.replace("/hr");
   }, [loading, user, router]);
+
+  useEffect(() => {
+    fetch("/api/download/app/info")
+      .then((r) => (r.ok ? r.json() : { available: false }))
+      .then(setApk)
+      .catch(() => setApk({ available: false }));
+  }, []);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -89,6 +97,17 @@ export default function LoginPage() {
             </button>
           </form>
         </div>
+
+        {apk?.available && (
+          <a
+            href="/api/download/app"
+            className="mt-4 flex items-center justify-center gap-2 w-full h-11 rounded-xl bg-white/10 hover:bg-white/20 ring-1 ring-white/20 text-white text-sm font-medium transition"
+          >
+            <span aria-hidden>📱</span>
+            {t("auth.download_app")}
+            {apk.size_mb ? <span className="text-white/60">· {apk.size_mb} MB</span> : null}
+          </a>
+        )}
       </div>
     </div>
   );

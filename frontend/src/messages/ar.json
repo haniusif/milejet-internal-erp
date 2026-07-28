@@ -19,6 +19,7 @@
   "nav.invoices": "الفواتير",
   "nav.bills": "فواتير الموردين",
   "auth.sign_in": "تسجيل الدخول",
+  "auth.download_app": "تنزيل تطبيق أندرويد",
   "auth.email": "البريد الإلكتروني",
   "auth.password": "كلمة المرور",
   "auth.signing_in": "جارٍ تسجيل الدخول…",
