@@ -388,6 +388,21 @@ Route::middleware('auth:sanctum')->prefix('mobile')->group(function () {
     Route::get('/finance/expenses', [V1MobileDomain::class, 'financeExpenses']);
     Route::get('/dashboard',        [V1MobileDomain::class, 'dashboard']);
 
+    // CRM detail/actions — reuse the web CrmController (reads crm.view, writes crm.write).
+    Route::middleware('can:crm.view')->group(function () {
+        Route::get('/crm/config',        [V1Crm::class, 'config']);
+        Route::get('/crm/leads/{id}',    [V1Crm::class, 'leadDetail'])->whereNumber('id');
+        Route::get('/crm/customers/{id}', [V1Crm::class, 'customer360'])->whereNumber('id');
+        Route::middleware('can:crm.write')->group(function () {
+            Route::post('/crm/leads',               [V1Crm::class, 'storeLead']);
+            Route::put('/crm/leads/{id}',           [V1Crm::class, 'updateLead'])->whereNumber('id');
+            Route::post('/crm/leads/{id}/won',      [V1Crm::class, 'won'])->whereNumber('id');
+            Route::post('/crm/leads/{id}/lost',     [V1Crm::class, 'lost'])->whereNumber('id');
+            Route::post('/crm/leads/{id}/activities', [V1Crm::class, 'storeActivity'])->whereNumber('id');
+            Route::post('/crm/leads/{id}/note',     [V1Crm::class, 'storeNote'])->whereNumber('id');
+        });
+    });
+
     Route::get('/notifications', [MobileApiController::class, 'notifications']);
     Route::post('/notifications/read', [MobileApiController::class, 'markNotificationsRead']);
     Route::post('/notifications/test', [MobileApiController::class, 'testPush']);
